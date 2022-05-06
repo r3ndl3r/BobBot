@@ -17,7 +17,7 @@ has discord             => ( is => 'lazy', builder => sub { shift->bot->discord 
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 
 has name                => ( is => 'ro', default => 'oz' );
-has access              => ( is => 'ro', default => 0 );
+has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'oz' );
 has pattern             => ( is => 'ro', default => '^oz ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_oz } );
