@@ -23,8 +23,10 @@ has usage               => ( is => 'ro', default => '!restart' );
 sub cmd_restart {
     my ($self, $msg) = @_;
     
-    sleep 1;
-    exit;
+    my $channel = $msg->{'channel_id'};
+    my $discord = $self->discord;
+
+    $discord->send_message($channel, "OK", sub { exit });
 }
 
 1;

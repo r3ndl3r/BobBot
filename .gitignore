@@ -4,4 +4,5 @@ config.ini
 # Ignore log files
 *.log
 
-report/
+report
+Catch.pm

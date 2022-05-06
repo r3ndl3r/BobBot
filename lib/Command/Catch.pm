@@ -54,6 +54,7 @@ sub cmd_catch {
 
         [ 'genshin', 'Genshin Impact is a game for n00bs.' ],
 
+        [ 'vu21992', "https://studentbhtafeedu-my.sharepoint.com/:f:/g/personal/s10108873_student_bhtafe_edu_au/ElyAFMWHEDVChfT_RlmBqc0BbeYC5hHUx321EKuMLMxLUw?e=NP6MVu", 1 ],
         [ 'vu21991-at3', "VU21991 AT3 resources zip:\nhttps://www.rendler.org/VU21991_-_AT3.zip", 1 ],
         [ 'ats.xlsx', "ATs excel sheet:\nhttps://www.rendler.org/ATs.xlsx", 1 ],
 
