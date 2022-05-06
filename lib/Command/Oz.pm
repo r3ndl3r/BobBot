@@ -50,6 +50,7 @@ sub cmd_oz {
     my $dbh = $db->{'dbh'};
 
     if ($args && $args eq 'del') {
+        $discord->delete_message($channel, $msg->{'id'});
         $sql = "SELECT channel FROM oz WHERE channel IS NOT NULL";
         $sth = $dbh->prepare($sql);
         $sth->execute();

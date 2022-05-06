@@ -244,7 +244,9 @@ sub discord_on_message_create
                             #);
 
                             $hash->{'content'} = $msg;  # We've made some changes to the message content, let's make sure those get passed on to the command.
-                            $object->$function($hash);
+                            if ($function) {
+                                $object->$function($hash);
+                            }
                         }
                     }
                 }
