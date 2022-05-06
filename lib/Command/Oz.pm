@@ -41,7 +41,7 @@ sub cmd_oz {
     my $channel = $msg->{'channel_id'};
     my $author  = $msg->{'author'};
     my $args    = $msg->{'content'};
-       $args    =~ s/$pattern//i;
+       $args    =~ s/$pattern//i if $args;
 
     my $config = $self->{'bot'}{'config'}{'oz'};
 
