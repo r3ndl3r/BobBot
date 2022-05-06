@@ -1,0 +1,6 @@
+#!/bin/bash -l
+screen -X -S bobbot quit
+sleep 2
+PERL5LIB="/home/rendler/scripts:/home/rendler/perl5/lib:/home/rendler/Goose-master/lib"
+export PERL5LIB=$PERL5LIB:$HOME/scripts:$HOME/perl5/lib:$HOME/perl5/lib/perl5
+(cd /home/rendler/Goose-master && screen -S bobbot -t 0 -A -d -m ./goose.pl)
