@@ -34,7 +34,6 @@ use Command::Info;
 use Command::Meme;
 use Command::Restart;
 use Command::Say;
-use Command::Test;
 use Command::Uptime;
 
 print "\n" . localtime . color('green') . " STARTING MOFO\n" . color('reset');
@@ -68,7 +67,6 @@ $bot->add_command( Command::Info->new           ('bot' => $bot) );
 $bot->add_command( Command::Meme->new           ('bot' => $bot) );
 $bot->add_command( Command::Restart->new        ('bot' => $bot) );
 $bot->add_command( Command::Say->new            ('bot' => $bot) );
-$bot->add_command( Command::Test->new           ('bot' => $bot) );
 $bot->add_command( Command::Uptime->new         ('bot' => $bot) );
 
 # Start the bot
