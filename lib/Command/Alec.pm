@@ -34,7 +34,7 @@ sub cmd_alec
     my $replyto = '<@' . $author->{'id'} . '>';
 
     $discord->send_message($channel, "Alec has coomvid. Stay away from him.");
-    $discord->send_image($channel, {'content' => 'alec.gif:', 'name' => 'alec.gif', 'path' => "lib/Command/alec.gif"});
+    $discord->send_image($channel, {'content' => 'alec.gif:', 'name' => 'alec.gif', 'path' => "lib/Command/images/alec.gif"});
 }
 
 1;

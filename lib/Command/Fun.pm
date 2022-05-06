@@ -34,7 +34,7 @@ sub cmd_fun {
     my $discord = $self->discord;
     my $replyto = '<@' . $author->{'id'} . '>';
 
-    $discord->send_image($channel, {'content' => '', 'name' => 'fun.png', 'path' => "lib/Command/fun.jpg"});
+    $discord->send_image($channel, {'content' => '', 'name' => 'fun.png', 'path' => "lib/Command/images/fun.jpg"});
 }
 
 1;
