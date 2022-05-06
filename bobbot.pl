@@ -8,9 +8,10 @@ use utf8;
 use FindBin 1.51 qw( $RealBin );
 use lib "$RealBin/lib";
 
-use Term::ANSIColor;
-use Config::Tiny;
 use Bot::Bobbot;
+
+use Config::Tiny;
+use Term::ANSIColor;
 
 binmode STDOUT, ":utf8";
 
