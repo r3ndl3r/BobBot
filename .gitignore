@@ -5,4 +5,4 @@ config.ini
 *.log
 
 report
-Catch.pm
+lib/Command/Catch.pm
