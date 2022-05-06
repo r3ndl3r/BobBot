@@ -71,7 +71,7 @@ has discord             => ( is => 'lazy', builder => sub {
 # Logging
 has loglevel            => ( is => 'lazy', builder => sub { shift->config->{'discord'}{'log_level'} } );
 has logdir              => ( is => 'lazy', builder => sub { shift->config->{'discord'}{'log_dir'} } );
-has logfile             => ( is => 'ro', default => 'goose-bot.log' );
+has logfile             => ( is => 'ro', default => 'bobbot-bot.log' );
 has log                 => ( is => 'lazy', builder => sub { 
                                 my $self = shift; 
                                 Mojo::Log->new( 
@@ -106,7 +106,7 @@ sub start
     #$self->discord_on_message_reaction_add();
     #$self->discord_on_message_reaction_remove();
 
-    $self->log->info('[Goose.pm] [BUILD] New session beginning ' .  localtime(time));
+    $self->log->info('[Bobbot.pm] [BUILD] New session beginning ' .  localtime(time));
     $self->discord->init();
     
     # Start the IOLoop unless it is already running. 
@@ -279,7 +279,7 @@ sub discord_on_presence_update
 sub _add_me
 {
     my ($self, $user) = @_;
-    $self->log->info('[Goose.pm] [_add_me] My Discord ID: ' . $user->{'id'});
+    $self->log->info('[Bobbot.pm] [_add_me] My Discord ID: ' . $user->{'id'});
     $self->_set_user_id($user->{'id'});
 }
 
@@ -327,7 +327,7 @@ sub add_command
 
     $self->{'patterns'}->{$command->pattern} = $name;
 
-    $self->log->debug('[Goose.pm] [add_moo_command] Registered new command: "' . $name . '" identified by "' . $command->pattern . '"');
+    $self->log->debug('[Bobbot.pm] [add_moo_command] Registered new command: "' . $name . '" identified by "' . $command->pattern . '"');
 }
 
 # This sub calls any of the registered commands and passes along the args
