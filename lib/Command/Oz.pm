@@ -27,7 +27,26 @@ has timer_seconds       => ( is => 'ro', default => 600 );
 has timer_sub => ( is => 'ro', default => sub 
     { 
         my $self = shift;
-        Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->cmd_oz; } ) 
+        Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->cmd_oz } ) 
+    }
+);
+
+
+has on_message => ( is => 'ro', default => 
+    sub {
+        my $self = shift;
+        my $config = $self->{'bot'}{'config'}{'oz'};
+
+        $self->discord->gw->on('MESSAGE_CREATE' =>
+            sub {
+                    my ($s, $m) = @_;
+                    if ($config->{'channel'} eq $m->{'channel_id'} && $m->{'content'} eq 'del') {
+                        cmd_oz($self, $m);
+                    }
+
+
+                }
+        );
     }
 );
 
