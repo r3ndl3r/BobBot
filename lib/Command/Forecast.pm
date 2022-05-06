@@ -28,7 +28,7 @@ has function            => ( is => 'ro', default => sub { \&forecast } );
 has usage               => ( is => 'ro', default => "Usage: !forecast" );
 has timer_seconds       => ( is => 'ro', default => 3600 );
 
-has timer_sub           => ( is => 'ro',    default => sub 
+has timer_sub => ( is => 'ro', default => sub 
     { 
         my $self = shift;
         Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->forecast; } ) 
