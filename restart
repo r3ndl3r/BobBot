@@ -1,4 +1,0 @@
-#!/usr/bin/perl -w
-use strict;
-
-fork && system "/home/rendler/Goose-master/bobbot";
