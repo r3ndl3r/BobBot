@@ -5,5 +5,5 @@ config.ini
 *.log
 
 report
-lib/Command/Catch.pm
 lib/Command/images
+Catch.pm
