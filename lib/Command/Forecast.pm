@@ -121,7 +121,7 @@ sub cmd_forecast {
 
         push @msg, (sprintf "**%s**:", strftime "%A, %-d %B %Y", localtime $date);
         
-
+        # Populate %minMax with min/max temps and precipitation information. Order using 1-3 hash keys.
         my %minMax;
         if (ref $day->{element} eq 'ARRAY') {
 
@@ -140,6 +140,7 @@ sub cmd_forecast {
                 }
             }
 
+            # Join all the info together.
             push @msg, join '  /  ', map { $minMax{$_} } sort keys %minMax;
 
         }
@@ -156,7 +157,7 @@ sub cmd_forecast {
         ++$i;
     }
 
-    push @msg, sprintf "Last updated: %s.\nUpdating every: %s seconds.\n(Please turn off channel notifications if this is annoying you.)", strftime("%a %b %d %H:%M:%S %Y", localtime), 3600;
+    push @msg, sprintf "Last updated: **%s**.\nUpdating every: **%s** minutes.\n(Please turn off channel notifications if this is annoying you.)", strftime("%a %b %d %H:%M:%S %Y", localtime), 3600 / 60;
 
     $discord->send_message($forecast->{'channel'}, "Current temperature in **$city** is: **$forecast->{'temp'}**°C\n\n" . join ("\n", @msg),
         sub { 
