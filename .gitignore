@@ -6,3 +6,4 @@ config.ini
 
 report
 lib/Command/Catch.pm
+lib/Command/images
