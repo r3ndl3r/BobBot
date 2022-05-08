@@ -5,6 +5,7 @@ use strictures 2;
 use Component::DBI;
 use LWP::UserAgent;
 use namespace::clean;
+use JSON;
 
 use Exporter qw(import);
 
@@ -20,7 +21,7 @@ has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
 has timer_sub           => ( is => 'ro',    default => sub 
     { 
         my $self = shift;
-        Mojo::IOLoop->recurring($self->timer_seconds => sub {$self->twitch; }
+        Mojo::IOLoop->recurring( $self->timer_seconds => sub {$self->twitch; }
         ) 
     }
 );
@@ -28,17 +29,17 @@ has timer_sub           => ( is => 'ro',    default => sub
 has usage               => ( is => 'ro', default => <<EOF
 Usage: 
     Adding and removing streams:
-    !twitch [a|dd] [stream]
-    !twitch [d|el] [stream]
+    ![t|witch] [a|dd] [stream]
+    ![t|witch] [d|el] [stream]
 
     List all streams that have been added:
-    !twitch [l|ist]
+    ![t|witch] [l|ist]
 
     Toggle tagging yourself in alert messages:
-    !twitch [t|ag] [stream]
+    ![t|witch] [t|ag] [stream]
 
     List where you have tagging enabled:
-    !twitch [t|ag] [l|ist]
+    ![t|witch] [t|ag] [l|ist]
 EOF
 );
 
@@ -196,87 +197,87 @@ sub twitch {
     my @streams = @{ $db->get('streams') };
     
     for my $stream (@streams) {
-            if (getS($stream, $config)) {
+
+        my $title = getStream($stream, $config);
+        
+        if ($title) {
             
-                # Check global package variable for onlineless.
-                if (!$online{$stream}) {
-                    # Set stream as online in persistant hash.
-                    $online{$stream} = 1;
-                    print localtime . " Twitch => $stream is online.\n";
+            # Check global package variable for onlineless.
+            if (!$online{$stream}) {
+                # Set stream as online in persistant hash.
+                $online{$stream} = 1;
+                print localtime . " Twitch => $stream is online. $title\n";
 
-                    # Records of when streamer was last on.
-                    my %laston = %{ $db->get('laston') };
+                # Records of when streamer was last on.
+                my %laston = %{ $db->get('laston') };
 
-                    # Only excute after first loop of check has been completed (after startup).
-                    if (!$start) {
+                # Only excute after first loop of check has been completed (after startup).
+                if (!$start) {
 
-                        my %tagging = %{ $db->get('streams-tagging') };
-                        my (@tags, $message);
+                    my %tagging = %{ $db->get('streams-tagging') };
+                    my (@tags, $message);
 
-                        for my $user (keys %tagging) {
-                            if ($tagging{$user}{$stream}) {
-                                push @tags, '<@' . $user . '>'
-                            }
-
-                        }                        
-
-                        # If last online record exists and it's less than 20 mins ago then probably stream crashed.
-                        if (exists $laston{$stream} && (time() - $laston{$stream}) < 1200) {
-                            if (@tags) {
-                                $message = join (' ', @tags) . "$stream is back online (from probable stream crash).";
-
-                            } else {
-                                $message = "**$stream** is back online (from probable stream crash).";
-                            }
-                        
-                        } else {
-
-                            my $message;
-                            if (@tags) {
-                                $message = join (' ', @tags) . " **$stream** is online. https://www.twitch.tv/$stream";
-                            } else {
-                                # No tagging enabled.
-                                $message = "**$stream** is online. https://www.twitch.tv/$stream";
-                            }
-
-                        }    
-
-                        if ( $message ) {
-                            $discord->send_message($config->{'channel'}, $message,
-                                sub {  
-                                    my $id = shift->{'id'};
-                                    unless ( $db->get('twitch-message-id') ) {
-                                        $db->set('twitch-message-id', {});
-                                    }
-
-                                    my %tMi = %{ $db->get('twitch-message-id') };
-                                    $tMi{$stream} = $id;
-                                    $db->set('twitch-message-id', \%tMi);
-
-                                }
-                            );
-                            
+                    for my $user (keys %tagging) {
+                        if ($tagging{$user}{$stream}) {
+                            push @tags, '<@' . $user . '>'
                         }
-                    }
 
+                    }                   
+
+                    # If last online record exists and it's less than 20 mins ago then probably stream crashed.
+                    if (exists $laston{$stream} && (time() - $laston{$stream}) < 1200) {
+                        if (@tags) {
+                            $message = join (' ', @tags) . "$stream is back online (from probable stream crash).\n$title\nhttps://www.twitch.tv/$stream";
+
+                        } else {
+                            $message = "**$stream** is back online (from probable stream crash).\n$title\nhttps://www.twitch.tv/$stream";
+                        }
                     
+                    } else {
 
-                    # Update latest stream online timestamp.
-                    $laston{$stream} = time();
-                    $db->set('laston', \%laston);
+                        
+                        if (@tags) {
+                            $message = join (' ', @tags) . " **$stream** is online.\n$title\nhttps://www.twitch.tv/$stream";
+                        } else {
+                            # No tagging enabled.
+                            $message = "**$stream** is online.\n$title\nhttps://www.twitch.tv/$stream";
+                        }
+
+                    }    
+
+                    if ( $message ) {
+                        $discord->send_message($config->{'channel'}, $message,
+                            sub {  
+                                my $id  = shift->{'id'};
+                                my %tMi = %{ $db->get('twitch-message-id') };
+
+                                $discord->delete_message($config->{'channel'}, $tMi{$stream});
+
+                                $tMi{$stream} = $id;
+
+                                $db->set('twitch-message-id', \%tMi);
+                            }
+                        );
+                        
+                    }
                 }
-            } else {
-                # Stream offline so remove it from online hash.
-                delete $online{$stream};
 
-                my %tMi = %{ $db->get('twitch-message-id') };
-
-                if ($tMi{$stream}) {
-                    $discord->delete_message($config->{'channel'}, $tMi{$stream});
-                    delete $tMi{$stream};
-                    $db->set('twitch-message-id', \%tMi);
-                }
+                # Update latest stream online timestamp.
+                $laston{$stream} = time();
+                $db->set('laston', \%laston);
             }
+        } else {
+            # Stream offline so remove it from online hash.
+            delete $online{$stream};
+
+            my %tMi = %{ $db->get('twitch-message-id') };
+
+            if ($tMi{$stream}) {
+                $discord->delete_message($config->{'channel'}, $tMi{$stream});
+                delete $tMi{$stream};
+                $db->set('twitch-message-id', \%tMi);
+            }
+        }
     }
 
     # First loop end checkmark.
@@ -304,8 +305,9 @@ sub validChannel {
 }
 
 
-sub getS {
+sub getStream {
     my ($stream, $config) = @_;
+
     my $url = "https://api.twitch.tv/helix/streams?user_login=$stream";
     my $res = LWP::UserAgent->new->get($url,
         'client-id' => $config->{'cid'},
@@ -319,7 +321,10 @@ sub getS {
         print "Invalid OAuth token.\n";
         return;
     }
-    return $res->content =~ /^\{"data":\[\]/ ? 0 : 1;
+
+    my $json = from_json($res->content);
+
+    return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
 }
 
 1;
