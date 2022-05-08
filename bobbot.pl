@@ -17,7 +17,7 @@ binmode STDOUT, ":utf8";
 
 use Command::ATs;
 use Command::Alec;
-use Command::Alert;
+use Command::Twitch;
 use Command::Avatar;
 use Command::Bob;
 use Command::Card;
@@ -50,7 +50,7 @@ my $bot = Bot::Bobbot->new('config' => $config);
 # The new() function in each command will register with the bot.
 $bot->add_command( Command::ATs->new            ('bot' => $bot) );
 $bot->add_command( Command::Alec->new           ('bot' => $bot) );
-$bot->add_command( Command::Alert->new          ('bot' => $bot) );
+$bot->add_command( Command::Twitch->new         ('bot' => $bot) );
 $bot->add_command( Command::Avatar->new         ('bot' => $bot) );
 $bot->add_command( Command::Bob->new            ('bot' => $bot) );
 $bot->add_command( Command::Card->new           ('bot' => $bot) );

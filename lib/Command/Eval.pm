@@ -24,6 +24,28 @@ Usage: !eval <perl commands>
 EOF
 );
 
+# has timer_sub           => ( is => 'ro',    default => sub 
+#     { 
+#         my $self = shift;
+#         Mojo::IOLoop->recurring( 5 =>
+#         sub {
+#                 my $db = Component::DBI->new();
+#                 my %delete = %{ $db->get('delete') };
+
+#                 for my $msg (sort keys %delete) {
+#                     $self->discord->delete_message($delete{$msg}, $msg);
+#                     print "DELETE: $msg\n";
+#                     delete $delete{$msg};
+#                     $db->set('delete', \%delete);
+#                     return;
+#                 }
+
+#                 ;
+#             }
+#         ) 
+#     }
+# );
+
 sub cmd_eval {
     my ($self, $msg) = @_;
 
@@ -39,6 +61,21 @@ sub cmd_eval {
     my $discord = $self->discord;
     my $replyto = '<@' . $author->{'id'} . '>';
 
+    
+    # my $messages = $discord->get_channel_messages($channel,
+    #     sub {
+    #         my @messages = @{ $_[0] };
+    #         my %delete;
+    #         for my $msg (@messages) {
+    #             if ($msg->{'author'}{'id'} eq 955818369477640232) {
+    #                 $delete{$msg->{'id'}} = $msg->{'channel_id'};
+    #             }
+    #         }
+    #         $db->set('delete', \%delete);
+
+    #     }
+    # );
+    
     $discord->send_message($channel, eval $args);
 }
 

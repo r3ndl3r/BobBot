@@ -501,6 +501,12 @@ sub delete_text_channel {
     $self->rest->delete_text_channel($channel, $callback);
 }
 
+sub get_channel_messages {
+    my ($self, $channel, $callback) = @_;
+
+    $self->rest->get_channel_messages($channel, $callback);
+}
+
 =head2 send_file()
     Requires you to pass in the channel id, an args hashref, and optionally a callback
     The args hashref must contain:

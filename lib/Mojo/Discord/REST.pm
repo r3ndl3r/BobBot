@@ -283,6 +283,30 @@ sub create_voice_channel {
 }
 
 
+sub get_channel_messages {
+    my ($self, $channel,$callback) = @_;
+
+    my $route = "GET /channels/$channel/messages";
+    if ( my $delay = $self->_rate_limited($route) )
+    {
+        $self->log->warn('[REST.pm] [get_channel_messages] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->get_channel_messages($channel, $callback) });
+    }
+    else
+    {
+        my $url = $self->base_url . "/channels/$channel/messages";
+
+        $self->ua->get($url => sub
+        {
+            my ($ua, $tx) = @_;
+
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
 # send_message will check if it is being passed a hashref or a string.
 # This way it is simple to just send a message by passing in a string, but it can also support things like embeds and the TTS flag when needed.
 sub send_message
@@ -458,7 +482,7 @@ sub edit_message
     if ( my $delay = $self->_rate_limited($route))
     {
         $self->log->warn('[REST.pm] [edit_message] Route is rate limited. Trying again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->edit_message($dest, $param, $callback) });
+        Mojo::IOLoop->timer($delay => sub { $self->edit_message($dest, $msgid, $param, $callback) });
     }
     else
     {
@@ -496,11 +520,11 @@ sub delete_message
         };
     }
 
-    my $route = "DELETE /channels/$dest";
+    my $route = "DELETE /channels/$dest/messages/$msgid";
     if ( my $delay = $self->_rate_limited($route))
     {
         $self->log->warn('[REST.pm] [delete_message] Route is rate limited. Trying again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->delete_message($dest, $param, $callback) });
+        Mojo::IOLoop->timer($delay => sub { $self->delete_message($dest, $msgid, $param, $callback) });
     }
     else
     {
