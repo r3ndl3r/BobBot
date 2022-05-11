@@ -36,6 +36,7 @@ use Command::Oz;
 use Command::Restart;
 use Command::Say;
 use Command::Uptime;
+use Command::Yahya;
 
 print "\n" . localtime . color('green') . " STARTING MOFO\n" . color('reset');
 # Fallback to "config.ini" if the user does not pass in a config file.
@@ -69,6 +70,7 @@ $bot->add_command( Command::Oz->new             ('bot' => $bot) );
 $bot->add_command( Command::Restart->new        ('bot' => $bot) );
 $bot->add_command( Command::Say->new            ('bot' => $bot) );
 $bot->add_command( Command::Uptime->new         ('bot' => $bot) );
+$bot->add_command( Command::Yahya->new          ('bot' => $bot) );
 
 # Start the bot
 $bot->start();
