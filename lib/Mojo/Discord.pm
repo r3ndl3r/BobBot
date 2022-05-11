@@ -507,6 +507,18 @@ sub get_channel_messages {
     $self->rest->get_channel_messages($channel, $callback);
 }
 
+sub get_guild_roles {
+    my ($self, $guild, $callback) = @_;
+
+    $self->rest->get_guild_roles($guild, $callback);
+}
+
+sub modify_guild_role {
+    my ($self, $guild, $role, $json, $callback) = @_;
+
+    $self->rest->modify_guild_role($guild, $role, $json, $callback);
+}
+
 =head2 send_file()
     Requires you to pass in the channel id, an args hashref, and optionally a callback
     The args hashref must contain:

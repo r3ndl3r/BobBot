@@ -172,7 +172,7 @@ sub _valid_id
 sub move_channel_category {
     my ($self, $channel, $guild, $callback) = @_;
     
-    my $route = "PATCH/channels/$channel";
+    my $route = "PATCH /channels/$channel";
     my $url   = $self->base_url . "/channels/$channel";
 
     my $json = {
@@ -302,6 +302,60 @@ sub get_channel_messages {
         my $url = $self->base_url . "/channels/$channel/messages";
 
         $self->ua->get($url => sub
+        {
+            my ($ua, $tx) = @_;
+
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
+
+sub get_guild_roles {
+    my ($self, $guild, $callback) = @_;
+
+    my $route = "GET /guilds/$guild/roles";
+
+    my $json = {
+        'limit'  => 100,
+    };   
+
+    if ( my $delay = $self->_rate_limited($route) )
+    {
+        $self->log->warn('[REST.pm] [get_guild_roles] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->get_guild_roles($guild, $callback) });
+    }
+    else
+    {
+        my $url = $self->base_url . "/guilds/$guild/roles";
+
+        $self->ua->get($url => sub
+        {
+            my ($ua, $tx) = @_;
+
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
+sub modify_guild_role {
+    my ($self, $guild, $role, $json, $callback) = @_;
+    
+    my $route = "PATCH /guilds/$guild/roles/$role";
+    my $url   = $self->base_url . "/guilds/$guild/roles/$role";
+
+    if ( my $delay = $self->_rate_limited($route))
+    {
+        $self->log->warn('[REST.pm] [modify_guild_role] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->modify_guild_role($guild, $role, $callback) });
+    }
+    else
+    {
+        $self->ua->patch($url => {Accept => '*/*'} => json => $json => sub
         {
             my ($ua, $tx) = @_;
 

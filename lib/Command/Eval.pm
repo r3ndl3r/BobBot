@@ -28,21 +28,13 @@ EOF
 sub cmd_eval {
     my ($self, $msg) = @_;
 
-    my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
-
     my $pattern = $self->pattern;
-    $args =~ s/$pattern//i;
-
-    
-    
     my $discord = $self->discord;
+    my $channel = $msg->{'channel_id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
+       $args    =~ s/$pattern//i;
     my $replyto = '<@' . $author->{'id'} . '>';
-
-    my $db  = Component::DBI->new();
-    my %tMi = %{ $db->get('twitch-message-id') };
-    print Data::Dumper::Dumper(\%tMi);
     
     $discord->send_message($channel, eval $args);
 }

@@ -53,7 +53,7 @@ sub cmd_del {
 
     my $discord = $self->discord;
 
-    if ($args) {
+    if ($args =~ /^\d+$/) {
         $discord->delete_message($msg->{'channel_id'}, $args);
     
     } else {
@@ -64,13 +64,18 @@ sub cmd_del {
                 my %delete;
 
                 for my $msg (@messages) {
-                    $delete{$msg->{'id'}} = $msg->{'channel_id'};
-                    if ($msg->{'author'}{'id'} eq 955818369477640232) {
-                        
+
+                    if ($args && $args eq 'all') {
+                        $delete{$msg->{'id'}} = $msg->{'channel_id'};
+
+                    } else {
+                        if ($msg->{'author'}{'id'} eq 955818369477640232) {
+                            $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                        }
                     }
                 }
-                $db->set('delete', \%delete);
 
+                $db->set('delete', \%delete);
             }
         );
     }

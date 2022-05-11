@@ -41,6 +41,8 @@ sub cmd_hadi {
         })->catch(sub{
             $self->discord->send_message($channel, ":x: Sorry, couldn't find any animu. Try again later!");
         });
+    } elsif ($args =~ /with his girlfriend/i) {
+        $discord->send_image($channel, {'content' => '', 'name' => 'gf.png', 'path' => "lib/Command/images/gf.png"});
     } else {
         $discord->send_message($channel, "Hadi likes anime girls. Fact.");
     }
