@@ -55,6 +55,7 @@ sub cmd_del {
 
     if ($args) {
         $discord->delete_message($msg->{'channel_id'}, $args);
+    
     } else {
         my $messages = $discord->get_channel_messages($channel,
             sub {
@@ -74,6 +75,7 @@ sub cmd_del {
         );
     }
 
+    # Delete the !del command.
     $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
 }
 
