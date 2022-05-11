@@ -284,9 +284,14 @@ sub create_voice_channel {
 
 
 sub get_channel_messages {
-    my ($self, $channel,$callback) = @_;
+    my ($self, $channel, $callback) = @_;
 
     my $route = "GET /channels/$channel/messages";
+
+    my $json = {
+        'limit'  => 100,
+    };   
+
     if ( my $delay = $self->_rate_limited($route) )
     {
         $self->log->warn('[REST.pm] [get_channel_messages] Route is rate limited. Trying again in ' . $delay . ' seconds');

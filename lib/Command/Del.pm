@@ -19,6 +19,28 @@ has pattern             => ( is => 'ro', default => '^del ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_del } );
 has usage               => ( is => 'ro', default => '!delete [ids]' );
 
+has timer_sub           => ( is => 'ro',    default => sub 
+    { 
+        my $self = shift;
+        Mojo::IOLoop->recurring( 3 =>
+        sub {
+                my $db = Component::DBI->new();
+                my %delete = %{ $db->get('delete') };
+
+                for my $msg (sort keys %delete) {
+                    $self->discord->delete_message($delete{$msg}, $msg);
+                    print "DELETE: $delete{$msg} - $msg\n";
+                    delete $delete{$msg};
+                    $db->set('delete', \%delete);
+                    return;
+                }
+
+                ;
+            }
+        ) 
+    }
+);
+
 sub cmd_del {
     my ($self, $msg) = @_;
 
@@ -31,10 +53,28 @@ sub cmd_del {
 
     my $discord = $self->discord;
 
-    my @msgs = split /\s+/, $args;
-    for (@msgs) {
-        $discord->delete_message($channel, $_);
+    if ($args) {
+        $discord->delete_message($msg->{'channel_id'}, $args);
+    } else {
+        my $messages = $discord->get_channel_messages($channel,
+            sub {
+                my $db       = Component::DBI->new();
+                my @messages = @{ $_[0] };
+                my %delete;
+
+                for my $msg (@messages) {
+                    $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                    if ($msg->{'author'}{'id'} eq 955818369477640232) {
+                        
+                    }
+                }
+                $db->set('delete', \%delete);
+
+            }
+        );
     }
+
+    $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
 }
 
 1;

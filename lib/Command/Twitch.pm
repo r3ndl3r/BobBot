@@ -247,11 +247,16 @@ sub twitch {
 
                     if ( $message ) {
                         $discord->send_message($config->{'channel'}, $message,
-                            sub {  
+                            sub {
+
+                                my $db  = Component::DBI->new();
                                 my $id  = shift->{'id'};
                                 my %tMi = %{ $db->get('twitch-message-id') };
 
-                                $discord->delete_message($config->{'channel'}, $tMi{$stream});
+                                if ($tMi{$stream}) {
+                                    $discord->delete_message($config->{'channel'}, $tMi{$stream});
+                                }
+                                print "MOOO: $stream = $id\n";
 
                                 $tMi{$stream} = $id;
 
