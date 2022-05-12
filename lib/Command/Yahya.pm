@@ -33,7 +33,11 @@ sub cmd_yahya {
     my $discord = $self->discord;
     my $replyto = '<@' . $author->{'id'} . '>';
 
-    $discord->send_image($channel, {'content' => 'The genius behind Apple.', 'name' => 'apple.jpg', 'path' => "lib/Command/images/apple.jpg"});
+    if ($args =~ /(with|and) his girlfriend/) {
+        $discord->send_image($channel, {'content' => 'Forbidden Love.', 'name' => 'mac.png', 'path' => "lib/Command/images/mac.png"});
+    } else {
+        $discord->send_image($channel, {'content' => 'The genius behind Apple.', 'name' => 'apple.jpg', 'path' => "lib/Command/images/apple.jpg"});
+    }
 
 }
 

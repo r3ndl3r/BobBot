@@ -9,7 +9,7 @@ extends 'Mojo::Discord';
 
 use Mojo::UserAgent;
 use Mojo::Util qw(b64_encode);
-use Mojo::JSON qw(decode_json);
+use Mojo::JSON qw(decode_json encode_json);
 use URI::Escape;
 use Data::Dumper;
 use Carp;

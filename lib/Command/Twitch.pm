@@ -43,7 +43,7 @@ Usage:
 EOF
 );
 
-my $start = 1;
+my $start = 0;
 my %online;
 
 sub cmd_twitch { 
@@ -226,27 +226,51 @@ sub twitch {
 
                     # If last online record exists and it's less than 20 mins ago then probably stream crashed.
                     if (exists $laston{$stream} && (time() - $laston{$stream}) < 1200) {
-                        if (@tags) {
-                            $message = join (' ', @tags) . "$stream is back online (from probable stream crash).\n$title\nhttps://www.twitch.tv/$stream";
-
-                        } else {
-                            $message = "**$stream** is back online (from probable stream crash).\n$title\nhttps://www.twitch.tv/$stream";
-                        }
+                        $message = "**$stream** is back online (from probable stream crash).";
                     
                     } else {
-
-                        
-                        if (@tags) {
-                            $message = join (' ', @tags) . " **$stream** is online.\n$title\nhttps://www.twitch.tv/$stream";
-                        } else {
-                            # No tagging enabled.
-                            $message = "**$stream** is online.\n$title\nhttps://www.twitch.tv/$stream";
-                        }
+                        $message = "**$stream** is online.";
 
                     }    
 
                     if ( $message ) {
-                        $discord->send_message($config->{'channel'}, $message,
+                        my $time = localtime;
+                        my $embed = {   
+                                        'embeds' => [ 
+                                            {   
+                                                'author' => {
+                                                    'name'     => $stream,
+                                                    'url'      => "https://www.twitch.tv/$stream",
+                                                    'icon_url' => 'https://pbs.twimg.com/profile_images/1450901581876973568/0bHBmqXe_400x400.png',
+                                                },
+                                                'thumbnail' => {
+                                                    'url'   => getProfile($stream, $config),
+                                                },
+                                                'title'       => 'Twitch Alert',
+                                                'description' => "$message\n",
+                                                'color'       => 48491,
+                                                'url'         => "https://www.twitch.tv/$stream",
+
+                                                'fields' => [
+                                                    {
+                                                        'name'  => 'Title:',
+                                                        'value' => $title,
+                                                    },
+                                                    {
+                                                        'name'  => 'Online since:',
+                                                        'value' => $time,
+                                                    },
+                                                ],
+                                            } 
+                                        ]
+                                    };
+
+                        
+                        if (@tags) {
+                            push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags }; 
+                        }
+
+                        $discord->send_message($config->{'channel'}, $embed,
                             sub {
 
                                 my $db  = Component::DBI->new();
@@ -256,13 +280,29 @@ sub twitch {
                                 if ($tMi{$stream}) {
                                     $discord->delete_message($config->{'channel'}, $tMi{$stream});
                                 }
-                                print "MOOO: $stream = $id\n";
 
                                 $tMi{$stream} = $id;
 
                                 $db->set('twitch-message-id', \%tMi);
                             }
-                        );
+                        );   
+
+                        # $discord->send_message($config->{'channel'}, $message,
+                        #     sub {
+
+                        #         my $db  = Component::DBI->new();
+                        #         my $id  = shift->{'id'};
+                        #         my %tMi = %{ $db->get('twitch-message-id') };
+
+                        #         if ($tMi{$stream}) {
+                        #             $discord->delete_message($config->{'channel'}, $tMi{$stream});
+                        #         }
+
+                        #         $tMi{$stream} = $id;
+
+                        #         $db->set('twitch-message-id', \%tMi);
+                        #     }
+                        # );
                         
                     }
                 }
@@ -332,4 +372,26 @@ sub getStream {
     return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
 }
 
+
+sub getProfile {
+    my ($stream, $config) = @_;
+
+    my $url = "https://api.twitch.tv/helix/users?login=$stream";
+    my $res = LWP::UserAgent->new->get($url,
+        'client-id' => $config->{'cid'},
+        'Authorization' => "Bearer $config->{'oauth'}",
+        );
+
+    if ($res->content =~ /Invalid OAuth/) {
+        # Go to https://dev.twitch.tv/console/apps for cid.
+        # Then https://twitchapps.com/tokengen/ for oauth (only enter cid).
+        print $res->content;
+        print "Invalid OAuth token.\n";
+        return;
+    }
+
+    my $json = from_json($res->content);
+
+    return $json->{'data'} ? $json->{'data'}[0]{'profile_image_url'} : 0;
+}
 1;

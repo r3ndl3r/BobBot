@@ -4,7 +4,6 @@ use utf8;
 
 use Moo;
 use strictures 2;
-use Mojo::JSON qw(decode_json);
 use namespace::clean;
 
 use Exporter qw(import);
@@ -14,7 +13,7 @@ has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has name                => ( is => 'ro', default => 'Test' );
-has access              => ( is => 'ro', default => 0 );
+has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => '' );
 has pattern             => ( is => 'ro', default => '^test ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_test } );
@@ -24,26 +23,57 @@ sub cmd_test
 {
     my ($self, $msg) = @_;
 
-    my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
-
-    my $pattern = $self->pattern;
-    $args =~ s/$pattern//i;
-
     my $discord = $self->discord;
-    my $replyto = '<@' . $author->{'id'} . '>';
+    my $pattern = $self->pattern;
 
-    eval 
-    { 
-        my $json = decode_json($args);
-        $discord->send_message($channel, $json);
-    };
-    if ($@)
-    {
-        # Send as plaintext instead.
-        $discord->send_message($channel, "hello");
-    }
+    my $channel = $msg->{'channel_id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
+       $args    =~ s/$pattern//i;
+
+    print "poo\n";
+
+    
+
+    my $time = localtime;
+
+    $discord->send_message($channel, 
+        {   
+            embeds => [ 
+                {   
+                    author => {
+                        'name'     => 'CDawgVA',
+                        'url'      => 'https://www.twitch.tv/cdawgva',
+                        'icon_url' => 'https://static-cdn.jtvnw.net/jtv_user_pictures/49110706-4c6c-4da5-8037-0fbd429405f5-profile_image-300x300.png',
+                    },
+                    'title'       => 'Twitch Alert',
+                    'description' =>  'CDawgVA just went online.',
+                    'url'         => 'https://www.twitch.tv/cdawgva',
+
+                    fields => [
+                        {
+                            'name'  => 'Title:',
+                            'value'  => 'Gaming With The BoxBox',
+                        },
+                        {
+                            'name'  => 'Online since:',
+                            'value' => $time,
+                        },
+                        {
+                            'name'  => 'Alerting:',
+                            'value' => "<@497218154586701834>",
+                            
+                        },
+
+                    ],
+                } 
+            ]
+        },
+        #sub {
+        #    print Data::Dumper::Dumper(\@_);
+        #}
+    );
+
 }
 
 1;
