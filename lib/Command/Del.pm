@@ -19,8 +19,9 @@ has pattern             => ( is => 'ro', default => '^del ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_del } );
 has usage               => ( is => 'ro', default => '!delete [ids]' );
 
-has timer_sub           => ( is => 'ro',    default => sub 
-    { 
+
+has timer_sub => ( is => 'ro', default =>
+    sub { 
         my $self = shift;
         Mojo::IOLoop->recurring( 3 =>
         sub {
@@ -41,17 +42,40 @@ has timer_sub           => ( is => 'ro',    default => sub
     }
 );
 
+
+has on_message => ( is => 'ro', default =>
+    sub {
+        my $self = shift;
+        $self->discord->gw->on('INTERACTION_CREATE' =>     
+            sub {
+                my ($gw, $msg) = @_;
+
+                my $id    = $msg->{'id'};
+                my $token = $msg->{'token'};
+                my $data  = $msg->{'data'};
+
+                if ($data->{'custom_id'} eq 'delete.all') {
+                    $msg->{'content'} = 'all';
+                    cmd_del($self, $msg);
+            
+                    $self->discord->interaction_response($id, $token, sub {print Data::Dumper::Dumper(\@_);});
+                }    
+            }
+        )
+    }
+);
+
+
 sub cmd_del {
     my ($self, $msg) = @_;
 
-    my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
-
-    my $pattern = $self->pattern;
-    $args =~ s/$pattern//i;
-
     my $discord = $self->discord;
+    my $pattern = $self->pattern;
+
+    my $channel = $msg->{'channel_id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
+       $args    =~ s/$pattern//i;
 
     if ($args =~ /^\d+$/) {
         $discord->delete_message($msg->{'channel_id'}, $args);

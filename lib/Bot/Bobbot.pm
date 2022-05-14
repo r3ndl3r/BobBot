@@ -113,7 +113,6 @@ sub start
     Mojo::IOLoop->start unless Mojo::IOLoop->is_running; 
 }
 
-
 sub discord_on_ready
 {
     my $self = shift;

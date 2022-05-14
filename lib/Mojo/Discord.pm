@@ -519,6 +519,12 @@ sub modify_guild_role {
     $self->rest->modify_guild_role($guild, $role, $json, $callback);
 }
 
+sub interaction_response {
+    my ($self, $id, $token, $callback) = @_;
+
+    $self->rest->interaction_response($id, $token, $callback);
+}
+
 =head2 send_file()
     Requires you to pass in the channel id, an args hashref, and optionally a callback
     The args hashref must contain:

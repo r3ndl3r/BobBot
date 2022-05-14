@@ -267,6 +267,12 @@ sub twitch {
 
                         
                         if (@tags) {
+                            for my $user (keys %tagging) {
+                                if ($tagging{$user}{$stream}) {
+                                    $discord->send_dm($user, $embed);
+                                }
+                            }
+
                             push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags }; 
                         }
 

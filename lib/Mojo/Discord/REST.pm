@@ -366,6 +366,37 @@ sub modify_guild_role {
     }
 }
 
+sub interaction_response {
+    my ($self, $id, $token, $callback) = @_;
+
+    print "$id - $token\n";
+
+    my $route = "/interactions/$id/$token/callback";
+
+    my $json = {
+        'type' => 6,
+        'data' => {
+            'content' => 'OK',
+        },
+    };
+
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn('[REST.pm] [interaction_response] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $callback) });
+    } else {
+        my $post_url = $self->base_url . "/interactions/$id/$token/callback";
+
+        $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+            my ($ua, $tx) = @_;
+
+            my $headers = $tx->res->headers;
+            $self->_set_route_rate_limits($route, $headers);
+            
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
 # send_message will check if it is being passed a hashref or a string.
 # This way it is simple to just send a message by passing in a string, but it can also support things like embeds and the TTS flag when needed.
 sub send_message

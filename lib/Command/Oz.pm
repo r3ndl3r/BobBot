@@ -132,6 +132,20 @@ sub cmd_oz {
         my $formatter = HTML::FormatText->new(leftmargin => 0, rightmargin => 500);
 
         my $embed = {   
+            'components' => [
+                {
+                    'type' => 1,
+                    'components' => [
+                        {
+                            'style'     => 1,
+                            'label'     => 'Del',
+                            'custom_id' => 'delete.all',
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                    ]
+                }
+            ],
             'embeds' => [ 
                 {   
                     'author' => {

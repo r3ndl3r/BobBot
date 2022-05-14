@@ -32,7 +32,6 @@ sub cmd_test
        $args    =~ s/$pattern//i;
 
   
-    print Data::Dumper::Dumper(\$self);return;
     my $time = localtime;
 
     $discord->send_message($channel, 
@@ -44,7 +43,7 @@ sub cmd_test
                         {
                             'style'     => 1,
                             'label'     => 'Test',
-                            'custom_id' => 'moo goo',
+                            'custom_id' => 'delete.all',
                             'disabled'  => 'false',
                             'type'      => 2
                         },
