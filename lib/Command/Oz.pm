@@ -33,6 +33,53 @@ has timer_sub => ( is => 'ro', default => sub
     }
 );
 
+sub matchKeyword {
+    my ($mode, $keyword, $discord, $channel) = @_;
+    my $db = Component::DBI->new();
+
+    unless ($db->get('oz')) {
+        $db->set('oz', {});
+    }
+
+    my %oz = %{ $db->get('oz') };
+
+    # Keyword already exists for adding.
+    if ($mode eq 'add' && exists $oz{$keyword}) {
+        $discord->send_message($channel, "OZ: That keyword already exists: '$keyword'.");
+
+        return;
+    }
+
+    # Add new keyword for matching.
+    if ($mode eq 'add') {
+        $discord->send_message($channel, "OZ: Added new keyword: '$keyword'.");
+
+        $oz{$keyword} = 1;
+        $db->set('oz', \%oz);
+        
+        return       
+    }
+
+    # Keyword doesn't exist for deletion.
+    if ($mode eq 'del' && !exists $oz{$keyword}) {
+        $discord->send_message($channel, "OZ: That keyword doesn't exist: '$keyword'.");
+
+        return;
+    }
+
+    # Delete keyword from matching.
+    if ($mode eq 'del') {
+        $discord->send_message($channel, "OZ: Deleted keyword: '$keyword'.");
+
+        delete $oz{$keyword};
+        $db->set('oz', \%oz);
+        
+        return;
+    }
+
+    
+}
+
 
 sub cmd_oz {
     my ($self, $msg) = @_;
@@ -50,7 +97,19 @@ sub cmd_oz {
     my ($sql, $sth);
     my $db  = Component::DBI->new();
     my $dbh = $db->{'dbh'};
-    
+    my %oz  = %{ $db->get('oz') };
+
+    if (my ($mode, $keyword) = $args =~ /^(add|del)\s+([\w\s]+)$/i) {
+
+        matchKeyword($mode, $keyword, $discord, $channel);
+
+        return;
+    }
+
+    if ($args eq 'list') {
+        $discord->send_message($channel, "OZ: Matching - " . join ', ', map { "[ **$_** ]" } sort keys %oz );
+    }
+
     my $ua = LWP::UserAgent->new();
        $ua->agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36');
 
@@ -68,35 +127,42 @@ sub cmd_oz {
             next;
         }
 
-    my $html = HTML::TreeBuilder->new();
-    $html->parse($item->{'description'});
-    my $formatter = HTML::FormatText->new(leftmargin => 0, rightmargin => 500);
+        my $html = HTML::TreeBuilder->new();
+        $html->parse($item->{'description'});
+        my $formatter = HTML::FormatText->new(leftmargin => 0, rightmargin => 500);
 
-    my $embed = {   
-                    'embeds' => [ 
-                        {   
-                            'author' => {
-                                'name'     => 'OzBargains',
-                                'url'      => 'https://www.ozbargain.com.au/',
-                                'icon_url' => 'https://files.delvu.com/images/ozbargain/logo/Square%20Flat.png',
-                            },
-                            'thumbnail' => {
-                                'url'   => $item->{'media:thumbnail'}{'url'},
-                            },
-                            'title'       => $item->{'title'},
-                            'description' => $formatter->format($html),
-                            'url'         => $item->{'link'},
+        my $embed = {   
+            'embeds' => [ 
+                {   
+                    'author' => {
+                        'name'     => 'OzBargains',
+                        'url'      => 'https://www.ozbargain.com.au/',
+                        'icon_url' => 'https://files.delvu.com/images/ozbargain/logo/Square%20Flat.png',
+                    },
+                    'thumbnail' => {
+                        'url'   => $item->{'media:thumbnail'}{'url'},
+                    },
+                    'title'       => $item->{'title'},
+                    'description' => $formatter->format($html),
+                    'url'         => $item->{'link'},
 
-                            'fields' => [
-                                {
-                                    'name'  => 'Link:',
-                                    'value' => $item->{'ozb:meta'}{'url'},
-                                },
-                            ],
-                        } 
-                    ]
-                };
+                    'fields' => [
+                        {
+                            'name'  => 'Link:',
+                            'value' => $item->{'ozb:meta'}{'url'},
+                        },
+                    ],
+                } 
+            ]
+        };
 
+        for my $keyword (keys %oz) {
+            if ($item->{'title'} =~ /$keyword/i) {
+                $discord->send_dm($self->{'bot'}{'config'}{'discord'}{'owner_id'}, $embed);
+                push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => '<@' .  $self->{'bot'}{'config'}{'discord'}{'owner_id'} . '>' };
+            }
+        }
+        
         $discord->send_message($config->{'channel'}, $embed,
             sub {
                 my $id = shift->{'id'};
