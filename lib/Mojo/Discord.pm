@@ -520,9 +520,9 @@ sub modify_guild_role {
 }
 
 sub interaction_response {
-    my ($self, $id, $token, $callback) = @_;
+    my ($self, $id, $token, $customid, $label, $callback) = @_;
 
-    $self->rest->interaction_response($id, $token, $callback);
+    $self->rest->interaction_response($id, $token, $customid, $label, $callback);
 }
 
 =head2 send_file()

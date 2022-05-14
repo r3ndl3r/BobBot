@@ -36,6 +36,7 @@ sub cmd_test
 
     $discord->send_message($channel, 
         {   
+            content => 'test',
             'components' => [
                 {
                     'type' => 1,
@@ -47,45 +48,38 @@ sub cmd_test
                             'disabled'  => 'false',
                             'type'      => 2
                         },
-                        {
-                            'style'   => 5,
-                            'label'   => 'CVE@CVE Details',
-                            'url'     => 'https://www.google.com',
-                            'disabled'=> 'false',
-                            'type'    => 2
-                        }
                     ]
                 }
             ],
-            'embeds' => [ 
-                {   
-                    author => {
-                        'name'     => 'CDawgVA',
-                        'url'      => 'https://www.twitch.tv/cdawgva',
-                        'icon_url' => 'https://static-cdn.jtvnw.net/jtv_user_pictures/49110706-4c6c-4da5-8037-0fbd429405f5-profile_image-300x300.png',
-                    },
-                    'title'       => 'Twitch Alert',
-                    'description' =>  'CDawgVA just went online.',
-                    'url'         => 'https://www.twitch.tv/cdawgva',
+            # 'embeds' => [ 
+            #     {   
+            #         author => {
+            #             'name'     => 'CDawgVA',
+            #             'url'      => 'https://www.twitch.tv/cdawgva',
+            #             'icon_url' => 'https://static-cdn.jtvnw.net/jtv_user_pictures/49110706-4c6c-4da5-8037-0fbd429405f5-profile_image-300x300.png',
+            #         },
+            #         'title'       => 'Twitch Alert',
+            #         'description' =>  'CDawgVA just went online.',
+            #         'url'         => 'https://www.twitch.tv/cdawgva',
 
-                    fields => [
-                        {
-                            'name'  => 'Title:',
-                            'value'  => 'Gaming With The BoxBox',
-                        },
-                        {
-                            'name'  => 'Online since:',
-                            'value' => $time,
-                        },
-                        {
-                            'name'  => 'Alerting:',
-                            'value' => "<@497218154586701834>",
+            #         fields => [
+            #             {
+            #                 'name'  => 'Title:',
+            #                 'value'  => 'Gaming With The BoxBox',
+            #             },
+            #             {
+            #                 'name'  => 'Online since:',
+            #                 'value' => $time,
+            #             },
+            #             {
+            #                 'name'  => 'Alerting:',
+            #                 'value' => "<@497218154586701834>",
                             
-                        },
+            #             },
 
-                    ],
-                } 
-            ]
+            #         ],
+            #     } 
+            # ]
         },
         #sub {
         #    print Data::Dumper::Dumper(\@_);

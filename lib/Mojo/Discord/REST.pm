@@ -367,22 +367,33 @@ sub modify_guild_role {
 }
 
 sub interaction_response {
-    my ($self, $id, $token, $callback) = @_;
-
-    print "$id - $token\n";
+    my ($self, $id, $token, $customid, $label, $callback) = @_;
 
     my $route = "/interactions/$id/$token/callback";
 
     my $json = {
-        'type' => 6,
+        'type' => 7,
         'data' => {
-            'content' => 'OK',
+            'components' => [
+                {
+                    'type' => 1,
+                    'components' => [
+                        {
+                            'style'     => 1,
+                            'label'     => $label,
+                            'custom_id' => $customid,
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                    ]
+                }
+            ],
         },
     };
 
     if ( my $delay = $self->_rate_limited($route) ) {
         $self->log->warn('[REST.pm] [interaction_response] Route is rate limited. Trying again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $callback) });
+        Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $customid, $callback) });
     } else {
         my $post_url = $self->base_url . "/interactions/$id/$token/callback";
 

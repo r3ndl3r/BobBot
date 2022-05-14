@@ -58,7 +58,7 @@ has on_message => ( is => 'ro', default =>
                     $msg->{'content'} = 'all';
                     cmd_del($self, $msg);
             
-                    $self->discord->interaction_response($id, $token, sub {print Data::Dumper::Dumper(\@_);});
+                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "DELETING PLEASE WAIT...");
                 }    
             }
         )

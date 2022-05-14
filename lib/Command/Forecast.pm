@@ -35,9 +35,29 @@ has timer_sub => ( is => 'ro', default => sub
     }
 );
 
+has on_message => ( is => 'ro', default =>
+    sub {
+        my $self = shift;
+        $self->discord->gw->on('INTERACTION_CREATE' =>     
+            sub {
+                my ($gw, $msg) = @_;
+
+                my $id    = $msg->{'id'};
+                my $token = $msg->{'token'};
+                my $data  = $msg->{'data'};
+
+                if ($data->{'custom_id'} eq 'update.weather') {
+                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, 'UPDATING PLEASE WAIT...', sub { $self->forecast });
+                }    
+            }
+        )
+    }
+);
+
 
 sub forecast {
     my $self = shift;
+
     my %forecast = (
         'melbourne' => {
             'name'    => 'Melbourne (Olympic Park)',
@@ -159,7 +179,24 @@ sub cmd_forecast {
 
     push @msg, sprintf "Last updated: **%s**.\nUpdating every: **%s** minutes.\n(Please turn off channel notifications if this is annoying you.)", strftime("%a %b %d %H:%M:%S %Y", localtime), 3600 / 60;
 
-    $discord->send_message($forecast->{'channel'}, "Current temperature in **$city** is: **$forecast->{'temp'}**°C\n\n" . join ("\n", @msg),
+    $discord->send_message($forecast->{'channel'}, 
+        {
+            'content' => "Current temperature in **$city** is: **$forecast->{'temp'}**°C\n\n" . join ("\n", @msg),
+            'components' => [
+                {
+                    'type' => 1,
+                    'components' => [
+                        {
+                            'style'     => 1,
+                            'label'     => 'UPDATE NOW',
+                            'custom_id' => 'update.weather',
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                    ]
+                }
+            ],
+        },
         sub { 
             my $id  = shift->{'id'};
             my $db  = Component::DBI->new();
