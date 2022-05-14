@@ -43,7 +43,7 @@ Usage:
 EOF
 );
 
-my $start = 0;
+my $start = 1;
 my %online;
 
 sub cmd_twitch { 
@@ -59,8 +59,8 @@ sub cmd_twitch {
     my @args    = split /\s+/, $args;
     my $replyto = '<@' . $author->{'id'} . '>';
 
-    my $config = $self->{'bot'}{'config'}{'twitch'};
-    my $db     = Component::DBI->new();
+    my $config  = $self->{'bot'}{'config'}{'twitch'};
+    my $db      = Component::DBI->new();
 
     my ($arg, $stream) = @args;
 

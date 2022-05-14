@@ -29,7 +29,7 @@ has timer_sub           => ( is => 'ro',    default => sub
 
                 for my $msg (sort keys %delete) {
                     $self->discord->delete_message($delete{$msg}, $msg);
-                    print "DELETE: $delete{$msg} - $msg\n";
+                    #print "DELETE: $delete{$msg} - $msg\n";
                     delete $delete{$msg};
                     $db->set('delete', \%delete);
                     return;
@@ -65,7 +65,7 @@ sub cmd_del {
 
                 for my $msg (@messages) {
 
-                    if ($args && $args eq 'all') {
+                    if ( ($args && $args eq 'all') || $channel eq 972066662868213820) {
                         $delete{$msg->{'id'}} = $msg->{'channel_id'};
 
                     } else {

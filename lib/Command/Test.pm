@@ -39,7 +39,28 @@ sub cmd_test
 
     $discord->send_message($channel, 
         {   
-            embeds => [ 
+            'components' => [
+                {
+                    'type' => 1,
+                    'components' => [
+                        {
+                            'style'     => 1,
+                            'label'     => 'Test',
+                            'custom_id' => 'moo goo',
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                        {
+                            'style'   => 5,
+                            'label'   => 'CVE@CVE Details',
+                            'url'     => 'https://www.google.com',
+                            'disabled'=> 'false',
+                            'type'    => 2
+                        }
+                    ]
+                }
+            ],
+            'embeds' => [ 
                 {   
                     author => {
                         'name'     => 'CDawgVA',

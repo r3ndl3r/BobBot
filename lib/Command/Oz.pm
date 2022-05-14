@@ -6,6 +6,8 @@ use strictures 2;
 use XML::Simple;
 use LWP::UserAgent;
 use Component::DBI;
+use HTML::TreeBuilder;
+use HTML::FormatText;
 
 use namespace::clean;
 
@@ -32,25 +34,6 @@ has timer_sub => ( is => 'ro', default => sub
 );
 
 
-has on_message => ( is => 'ro', default => 
-    sub {
-        my $self = shift;
-        my $config = $self->{'bot'}{'config'}{'oz'};
-
-        $self->discord->gw->on('MESSAGE_CREATE' =>
-            sub {
-                    my ($s, $m) = @_;
-                    if ($config->{'channel'} eq $m->{'channel_id'} && $m->{'content'} eq 'del') {
-                        cmd_oz($self, $m);
-                    }
-
-
-                }
-        );
-    }
-);
-
-
 sub cmd_oz {
     my ($self, $msg) = @_;
 
@@ -67,28 +50,6 @@ sub cmd_oz {
     my ($sql, $sth);
     my $db  = Component::DBI->new();
     my $dbh = $db->{'dbh'};
-
-    if ($args && $args eq 'del') {
-        $discord->delete_message($channel, $msg->{'id'});
-        $sql = "SELECT channel FROM oz WHERE channel IS NOT NULL";
-        $sth = $dbh->prepare($sql);
-        $sth->execute();
-
-        my @messages;
-        while (my $m = $sth->fetchrow_array()) {
-            push @messages, $m;
-        }
-
-        for my $msg (@messages) {
-            $discord->delete_message($config->{'channel'}, $msg);
-            $sql = "UPDATE oz SET channel = NULL WHERE channel = ?";
-            $sth = $dbh->prepare($sql);
-            $sth->execute($msg);
-        }
-
-        return;
-    }
-
     
     my $ua = LWP::UserAgent->new();
        $ua->agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/101.0.4951.54 Safari/537.36');
@@ -107,19 +68,46 @@ sub cmd_oz {
             next;
         }
 
-        $discord->send_message($config->{'channel'}, $item->{'link'},
+    my $html = HTML::TreeBuilder->new();
+    $html->parse($item->{'description'});
+    my $formatter = HTML::FormatText->new(leftmargin => 0, rightmargin => 500);
+
+    my $embed = {   
+                    'embeds' => [ 
+                        {   
+                            'author' => {
+                                'name'     => 'OzBargains',
+                                'url'      => 'https://www.ozbargain.com.au/',
+                                'icon_url' => 'https://files.delvu.com/images/ozbargain/logo/Square%20Flat.png',
+                            },
+                            'thumbnail' => {
+                                'url'   => $item->{'media:thumbnail'}{'url'},
+                            },
+                            'title'       => $item->{'title'},
+                            'description' => $formatter->format($html),
+                            'url'         => $item->{'link'},
+
+                            'fields' => [
+                                {
+                                    'name'  => 'Link:',
+                                    'value' => $item->{'ozb:meta'}{'url'},
+                                },
+                            ],
+                        } 
+                    ]
+                };
+
+        $discord->send_message($config->{'channel'}, $embed,
             sub {
                 my $id = shift->{'id'};
-                my $sql = "INSERT INTO oz (link, channel) VALUES(?, ?)";
+                my $sql = "INSERT INTO oz (link) VALUES(?)";
                 my $sth = $dbh->prepare($sql);
 
-                $sth->execute($item->{'link'}, $id);
-            } 
+                $sth->execute($item->{'link'});
+            }        
         );
 
     }
-    
-
 }    
 
 1;
