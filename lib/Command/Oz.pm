@@ -138,7 +138,7 @@ sub cmd_oz {
                     'components' => [
                         {
                             'style'     => 1,
-                            'label'     => 'Del',
+                            'label'     => 'Delete',
                             'custom_id' => 'delete.all',
                             'disabled'  => 'false',
                             'type'      => 2
