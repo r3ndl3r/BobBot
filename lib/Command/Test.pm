@@ -19,6 +19,29 @@ has pattern             => ( is => 'ro', default => '^test ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_test } );
 has usage               => ( is => 'ro', default => '' );
 
+
+has on_message => ( is => 'ro', default =>
+    sub {
+        my $self = shift;
+        $self->discord->gw->on('INTERACTION_CREATE' =>     
+            sub {
+                    my ($gw, $msg) = @_;
+
+                    my $id     = $msg->{'id'};
+                    my $token  = $msg->{'token'};
+                    my $data   = $msg->{'data'};
+                    my $custom = $data->{'custom_id'};
+                    
+                    if (my ($say) = $custom =~ /say\.(.+)/) {
+                        $self->discord->delete_message($msg->{'channel_id'}, $msg->{'message'}{'id'});
+                        $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "OK", sub { $self->discord->send_message($msg->{'channel_id'}, $say) });
+                    }
+                }    
+        )
+    }
+);
+
+
 sub cmd_test
 {
     my ($self, $msg) = @_;
@@ -31,20 +54,34 @@ sub cmd_test
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
-  
+    $discord->delete_message($channel, $msg->{'id'});
     my $time = localtime;
 
     $discord->send_message($channel, 
         {   
-            content => 'test',
+            content => 'Stuff for me to say:',
             'components' => [
                 {
                     'type' => 1,
                     'components' => [
                         {
                             'style'     => 1,
-                            'label'     => 'Test',
-                            'custom_id' => 'delete.all',
+                            'label'     => 'Poo',
+                            'custom_id' => 'say.poo',
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                                                {
+                            'style'     => 1,
+                            'label'     => 'Hello',
+                            'custom_id' => 'say.hello',
+                            'disabled'  => 'false',
+                            'type'      => 2
+                        },
+                                                {
+                            'style'     => 1,
+                            'label'     => 'Shit!',
+                            'custom_id' => 'say.shit',
                             'disabled'  => 'false',
                             'type'      => 2
                         },
