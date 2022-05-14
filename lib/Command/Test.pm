@@ -31,10 +31,8 @@ sub cmd_test
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
-    print "poo\n";
-
-    
-
+  
+    print Data::Dumper::Dumper(\$self);return;
     my $time = localtime;
 
     $discord->send_message($channel, 
