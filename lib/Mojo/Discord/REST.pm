@@ -286,11 +286,7 @@ sub create_voice_channel {
 sub get_channel_messages {
     my ($self, $channel, $callback) = @_;
 
-    my $route = "GET /channels/$channel/messages";
-
-    my $json = {
-        'limit'  => 100,
-    };   
+    my $route = "GET /channels/$channel/messages?limit=100"; 
 
     if ( my $delay = $self->_rate_limited($route) )
     {
@@ -299,7 +295,7 @@ sub get_channel_messages {
     }
     else
     {
-        my $url = $self->base_url . "/channels/$channel/messages";
+        my $url = $self->base_url . "/channels/$channel/messages?limit=100";
 
         $self->ua->get($url => sub
         {

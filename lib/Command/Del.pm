@@ -56,9 +56,7 @@ has on_message => ( is => 'ro', default =>
 
                 if ($data->{'custom_id'} eq 'delete.all') {
                     $msg->{'content'} = 'all';
-                    cmd_del($self, $msg);
-            
-                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "DELETING PLEASE WAIT...");
+                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "DELETING PLEASE WAIT...", sub { cmd_del($self, $msg) });
                 }    
             }
         )
