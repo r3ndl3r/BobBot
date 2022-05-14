@@ -99,14 +99,14 @@ sub cmd_oz {
     my $dbh = $db->{'dbh'};
     my %oz  = %{ $db->get('oz') };
 
-    if (my ($mode, $keyword) = $args =~ /^(add|del)\s+([\w\s]+)$/i) {
+    if ($args && (my ($mode, $keyword) = $args =~ /^(add|del)\s+([\w\s]+)$/i)) {
 
         matchKeyword($mode, $keyword, $discord, $channel);
 
         return;
     }
 
-    if ($args eq 'list') {
+    if ($args && $args eq 'list') {
         $discord->send_message($channel, "OZ: Matching - " . join ', ', map { "[ **$_** ]" } sort keys %oz );
     }
 
