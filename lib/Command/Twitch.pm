@@ -96,7 +96,7 @@ sub cmd_twitch {
     }
     
 
-    if ($arg =~ /^del(ete)?$/ and $stream) {
+    if ($arg =~ /^d(el(ete))?$/ and $stream) {
         
         unless ($stream =~ /^\w+$/i) {
             $discord->send_message($channel, "$stream is not valid channel.");
