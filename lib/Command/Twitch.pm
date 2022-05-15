@@ -292,23 +292,6 @@ sub twitch {
                                 $db->set('twitch-message-id', \%tMi);
                             }
                         );   
-
-                        # $discord->send_message($config->{'channel'}, $message,
-                        #     sub {
-
-                        #         my $db  = Component::DBI->new();
-                        #         my $id  = shift->{'id'};
-                        #         my %tMi = %{ $db->get('twitch-message-id') };
-
-                        #         if ($tMi{$stream}) {
-                        #             $discord->delete_message($config->{'channel'}, $tMi{$stream});
-                        #         }
-
-                        #         $tMi{$stream} = $id;
-
-                        #         $db->set('twitch-message-id', \%tMi);
-                        #     }
-                        # );
                         
                     }
                 }
@@ -316,6 +299,19 @@ sub twitch {
                 # Update latest stream online timestamp.
                 $laston{$stream} = time();
                 $db->set('laston', \%laston);
+
+                # Update title.
+                my %tMi = %{ $db->get('twitch-message-id') };
+                if ($tMi{$stream}) {
+                    my $msg = $discord->get_message($config->{'channel'}, $tMi{$stream},
+                        sub {
+                                my $msg = shift;
+                                $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $title;
+                                $discord->edit_message($config->{'channel'}, $tMi{$stream});
+
+                        }
+                    );
+                }
             }
         } else {
             # Stream offline so remove it from online hash.
