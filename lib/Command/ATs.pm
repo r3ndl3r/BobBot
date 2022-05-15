@@ -80,6 +80,7 @@ sub cmd_ats
          if ($ats{$_} - time() > 0) {
                  my ($unit, $at) = split /-/, $_;
                 $discord->send_message($channel, "The next AT due: $at for $unit ($units{$unit}) is due in " . howOld($ats{$_}));
+                $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
                 return;
             } 
         }
@@ -97,6 +98,7 @@ sub cmd_ats
         }
 
         $discord->send_message($channel, join "\n", @msg);
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 
     } elsif ($args eq 'overdue') {
 
@@ -111,6 +113,7 @@ sub cmd_ats
         }
 
         $discord->send_message($channel, join "\n", @msg);
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 
     }  elsif ($args eq 'fuck') {
         $discord->send_message($channel, "$replyto: fuck you");

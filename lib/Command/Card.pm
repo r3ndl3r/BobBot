@@ -79,6 +79,7 @@ sub cmd_card
         $self->_shuffle_deck($deck);
         $self->decks->{$channel_id} = $deck;
         $self->discord->send_message($channel_id, "The deck has been shuffled!");
+        $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
         return $deck;
     }
 
@@ -132,6 +133,7 @@ sub cmd_card
             
             my $winner = $p1 > $p2 ? '<@' . $author_id  . '>' : $b;
             $self->discord->send_message($channel_id, "With $p1 points vs $p2 points, the winner is: $winner");
+            $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
             return;
         } else {
             $self->discord->send_image($channel_id, {'content' => $message, 'name' => $name, 'path' => $image});

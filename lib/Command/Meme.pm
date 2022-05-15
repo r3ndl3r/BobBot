@@ -1,9 +1,11 @@
 package Command::Meme;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use LWP::UserAgent;
 use JSON;
 
@@ -43,7 +45,7 @@ sub cmd_meme {
         my $image = LWP::UserAgent->new->get();
 
         $discord->send_message($channel, $json->{url});
-        $self->discord->send_ack($channel, $id);
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     } else {
         $discord->send_message($channel, "Error: " . $meme->status_line . ". Try again later");
 }

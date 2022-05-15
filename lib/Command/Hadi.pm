@@ -1,9 +1,11 @@
 package Command::Hadi;
-
 use feature 'say';
+use utf8;
+
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_hadi);
 
@@ -23,14 +25,15 @@ sub cmd_hadi {
 
     my ($self, $msg) = @_;
 
-    my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
-
-    my $pattern = $self->pattern;
-    $args =~ s/$pattern//i;
-
     my $discord = $self->discord;
+    my $pattern = $self->pattern;
+ 
+    my $channel = $msg->{'channel_id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
+       $args    =~ s/$pattern//i;
+
+    
     my $replyto = '<@' . $author->{'id'} . '>';
 
     if ($args =~ /and his girlfriend/i) {
@@ -45,8 +48,10 @@ sub cmd_hadi {
         $discord->send_image($channel, {'content' => '', 'name' => 'gf.png', 'path' => "lib/Command/images/gf.png"});
     } else {
         $discord->send_message($channel, "Hadi likes anime girls. Fact.");
+        
     }
 
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

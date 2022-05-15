@@ -1,13 +1,17 @@
 package Command::Twitch;
+use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
+use namespace::clean;
+
 use Component::DBI;
 use LWP::UserAgent;
-use namespace::clean;
 use JSON;
 
 use Exporter qw(import);
+our @EXPORT_OK = qw(cmd_twitch);
 
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
@@ -91,6 +95,7 @@ sub cmd_twitch {
         $db->set('streams', \@streams);
     
         $discord->send_message($channel, "Added $stream to Twitch alerts list.");
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 
         return;
     }
@@ -135,6 +140,7 @@ sub cmd_twitch {
 
         # Join all the streamers we have tagging enabled for.
         $discord->send_message($channel, "Twitch alerts enabled for: " . join ', ', sort @streams);
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     
         return;
     }

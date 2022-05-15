@@ -1,9 +1,11 @@
 package Command::Yahya;
-
 use feature 'say';
+use utf8;
+
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_yahya);
 
@@ -35,8 +37,10 @@ sub cmd_yahya {
 
     if ($args =~ /(with|and) his girlfriend/) {
         $discord->send_image($channel, {'content' => 'Forbidden Love.', 'name' => 'mac.png', 'path' => "lib/Command/images/mac.png"});
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     } else {
         $discord->send_image($channel, {'content' => 'The genius behind Apple.', 'name' => 'apple.jpg', 'path' => "lib/Command/images/apple.jpg"});
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     }
 
 }

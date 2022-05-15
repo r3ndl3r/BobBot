@@ -27,6 +27,7 @@ sub cmd_restart {
     my $discord = $self->discord;
 
     $discord->send_message($channel, "OK", sub { exit });
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

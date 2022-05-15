@@ -1,10 +1,11 @@
 package Command::Forecast;
-
 use feature 'say';
 use utf8;
+
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use LWP::UserAgent;
 use XML::Simple;
 use Date::Parse;
@@ -56,7 +57,7 @@ has on_message => ( is => 'ro', default =>
 
 
 sub forecast {
-    my $self = shift;
+    my ($self, $msg) = @_;
 
     my %forecast = (
         'melbourne' => {
@@ -78,6 +79,7 @@ sub forecast {
         cmd_forecast($self, $city, $forecast{$city});
     }
 
+    $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 

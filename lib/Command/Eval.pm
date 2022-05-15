@@ -1,9 +1,11 @@
 package Command::Eval;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use Component::DBI;
 use Data::Dumper;
 
@@ -37,6 +39,7 @@ sub cmd_eval {
     my $replyto = '<@' . $author->{'id'} . '>';
     
     $discord->send_message($channel, eval $args);
+    $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

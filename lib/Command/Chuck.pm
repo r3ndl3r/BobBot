@@ -127,8 +127,9 @@ sub cmd_chuck {
     my ($self, $msg) = @_;
 
     my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
+    my $msgid   = $msg->{'id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
 
     my $pattern = $self->pattern;
     $args =~ s/$pattern//i;
@@ -137,6 +138,7 @@ sub cmd_chuck {
     my $replyto = '<@' . $author->{'id'} . '>';
 
     $discord->send_message($channel, $chuck[rand @chuck]);
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

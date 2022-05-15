@@ -1,5 +1,6 @@
 package Command::Oz;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
@@ -34,7 +35,7 @@ has timer_sub => ( is => 'ro', default => sub
 );
 
 sub matchKeyword {
-    my ($mode, $keyword, $discord, $channel) = @_;
+    my ($mode, $keyword, $discord, $channel, $msg) = @_;
     my $db = Component::DBI->new();
 
     unless ($db->get('oz')) {
@@ -56,6 +57,8 @@ sub matchKeyword {
 
         $oz{$keyword} = 1;
         $db->set('oz', \%oz);
+
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
         
         return       
     }
@@ -73,6 +76,8 @@ sub matchKeyword {
 
         delete $oz{$keyword};
         $db->set('oz', \%oz);
+
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
         
         return;
     }
@@ -101,13 +106,14 @@ sub cmd_oz {
 
     if ($args && (my ($mode, $keyword) = $args =~ /^(add|del)\s+([\w\s]+)$/i)) {
 
-        matchKeyword($mode, $keyword, $discord, $channel);
+        matchKeyword($mode, $keyword, $discord, $channel, $msg);
 
         return;
     }
 
     if ($args && $args eq 'list') {
         $discord->send_message($channel, "OZ: Matching - " . join ', ', map { "[ **$_** ]" } sort keys %oz );
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     }
 
     my $ua = LWP::UserAgent->new();

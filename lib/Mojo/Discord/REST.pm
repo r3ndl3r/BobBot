@@ -437,8 +437,6 @@ sub get_message {
 
             $self->_set_route_rate_limits($route, $tx->res->headers);
 
-            print $tx->res->json;
-
             $callback->($tx->res->json) if defined $callback;
         });
     }
@@ -1036,7 +1034,9 @@ sub create_reaction
     }
     else
     {
-        my $url = $self->base_url . "/channels/$channel/messages/$msgid/reactions/" . uri_escape_utf8($emoji) . '/@me';
+        my $utf = uri_escape_utf8($emoji);     
+        #my $url = $self->base_url . "/channels/$channel/messages/$msgid/reactions/" . uri_escape_utf8($emoji) . '/@me';
+        my $url = $self->base_url . "/channels/$channel/messages/$msgid/reactions/$utf/\@me";
 
         # Mojo::UserAgent 9.07 stops sending Content-Length when it is zero in cases like this.
         # Manually adding the header doesn't seem to correct the issue, but passing a single character in the body does and discord seems to accept it.

@@ -1,5 +1,6 @@
 package Command::Avatar;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
@@ -68,6 +69,7 @@ sub cmd_avatar
 
         # Send a message back to the channel
         $self->send_message($channel, $embed);
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
     });
 }
 

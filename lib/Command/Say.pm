@@ -1,5 +1,6 @@
 package Command::Say;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
@@ -33,7 +34,7 @@ sub cmd_say {
     $args =~ s/$pattern//i;
 
     $discord->send_message($channel, $args);
-
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

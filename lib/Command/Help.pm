@@ -1,5 +1,6 @@
 package Command::Help;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;

@@ -1,5 +1,6 @@
 package Command::Alec;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
@@ -35,6 +36,7 @@ sub cmd_alec
 
     $discord->send_message($channel, "Alec has coomvid. Stay away from him.");
     $discord->send_image($channel, {'content' => 'alec.gif:', 'name' => 'alec.gif', 'path' => "lib/Command/images/alec.gif"});
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

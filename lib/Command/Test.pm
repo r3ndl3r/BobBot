@@ -50,12 +50,16 @@ sub cmd_test
     my $pattern = $self->pattern;
 
     my $channel = $msg->{'channel_id'};
-    my $id      = $msg->{'id'};
+    my $msgid   = $msg->{'id'};
     my $author  = $msg->{'author'};
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
-    print Data::Dumper::Dumper($discord->get_guild(903864277025292328));return;
+    print "$args\n";
+    # "<a:NODDERS:779986982804783155>"
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖", sub{print Data::Dumper::Dumper(\@_);});
+
+    return;
     #$discord->delete_message($channel, $msg->{'id'});
     my $time = localtime;
 
@@ -125,8 +129,8 @@ sub cmd_test
         #}
     );
 
-    print "$channel $id\n";
-    $self->discord->send_ack($channel, $id);
+    #print "$channel $msgid\n";
+    $self->discord->send_ack($channel, $msgid);
 }
 
 1;

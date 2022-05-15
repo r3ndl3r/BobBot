@@ -1,10 +1,11 @@
 package Command::Storage;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
-
 use namespace::clean;
+
 use Component::DBI;
 
 use Exporter qw(import);
@@ -40,6 +41,7 @@ sub cmd_storage {
     if ($args =~ /^init\s+(\S+)/i) {
         $db->set($1, {});
         $discord->send_message($channel, "Storage: init '$1'.");
+        $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 
         return;
     }

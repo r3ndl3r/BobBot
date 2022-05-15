@@ -1,9 +1,11 @@
 package Command::Cursed;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
 use namespace::clean;
+
 use LWP::UserAgent;
 use JSON;
 use Component::DBI;
@@ -53,6 +55,7 @@ sub cmd_cursed {
     $db->set('cursed', \%cursed);
 
     $discord->send_message($channel, $cursed);
+    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;

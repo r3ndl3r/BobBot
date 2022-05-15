@@ -1,5 +1,6 @@
 package Command::Uptime;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
@@ -74,6 +75,7 @@ sub cmd_uptime
                ":chart_with_downwards_trend: `$num_sessions, $num_resumes`";
 
     $self->discord->send_message($channel, $uptime);
+    $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;
