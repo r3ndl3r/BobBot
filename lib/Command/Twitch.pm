@@ -64,7 +64,7 @@ sub cmd_twitch {
 
     my ($arg, $stream) = @args;
 
-    if ($arg =~ /^add$/ && $stream) {
+    if ($arg =~ /^a(dd)?$/ && $stream) {
 
         unless ($stream =~ /^\w+$/i) {
             $discord->send_message($channel, "$stream is not valid channel.");
