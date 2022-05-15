@@ -35,6 +35,7 @@ use Command::Meme;
 use Command::Oz;
 use Command::Restart;
 use Command::Say;
+use Command::Storage;
 use Command::Test;
 use Command::Uptime;
 use Command::Yahya;
@@ -70,7 +71,8 @@ $bot->add_command( Command::Meme->new           ('bot' => $bot) );
 $bot->add_command( Command::Oz->new             ('bot' => $bot) );
 $bot->add_command( Command::Restart->new        ('bot' => $bot) );
 $bot->add_command( Command::Say->new            ('bot' => $bot) );
-$bot->add_command( Command::Test->new            ('bot' => $bot) );
+$bot->add_command( Command::Storage->new        ('bot' => $bot) );
+$bot->add_command( Command::Test->new           ('bot' => $bot) );
 $bot->add_command( Command::Uptime->new         ('bot' => $bot) );
 $bot->add_command( Command::Yahya->new          ('bot' => $bot) );
 
