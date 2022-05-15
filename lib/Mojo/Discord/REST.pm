@@ -286,7 +286,7 @@ sub create_voice_channel {
 sub get_channel_messages {
     my ($self, $channel, $callback) = @_;
 
-    my $route = "GET /channels/$channel/messages?limit=100"; 
+    my $route = "GET /channels/$channel"; 
 
     if ( my $delay = $self->_rate_limited($route) )
     {
@@ -296,36 +296,6 @@ sub get_channel_messages {
     else
     {
         my $url = $self->base_url . "/channels/$channel/messages?limit=100";
-
-        $self->ua->get($url => sub
-        {
-            my ($ua, $tx) = @_;
-
-            $self->_set_route_rate_limits($route, $tx->res->headers);
-
-            $callback->($tx->res->json) if defined $callback;
-        });
-    }
-}
-
-
-sub get_guild_roles {
-    my ($self, $guild, $callback) = @_;
-
-    my $route = "GET /guilds/$guild/roles";
-
-    my $json = {
-        'limit'  => 100,
-    };   
-
-    if ( my $delay = $self->_rate_limited($route) )
-    {
-        $self->log->warn('[REST.pm] [get_guild_roles] Route is rate limited. Trying again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->get_guild_roles($guild, $callback) });
-    }
-    else
-    {
-        my $url = $self->base_url . "/guilds/$guild/roles";
 
         $self->ua->get($url => sub
         {
@@ -362,10 +332,54 @@ sub modify_guild_role {
     }
 }
 
+sub create_guild_role {
+    my ($self, $guild, $json, $callback) = @_;
+
+    my $route = "POST /guilds/$guild";
+
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn('[REST.pm] [create_guild_role] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->create_guild_role($guild, $json, $callback) });
+    } else {
+        my $post_url = $self->base_url . "/guilds/$guild/roles";
+
+        $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+            my ($ua, $tx) = @_;
+
+            my $headers = $tx->res->headers;
+            $self->_set_route_rate_limits($route, $headers);
+            
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
+sub delete_guild_role {
+    my ($self, $guild, $role, $callback) = @_;
+    my $route = "DELETE /guilds/$guild/roles/$role";
+
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn('[REST.pm] [delete_guild_role] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->delete_guild_role($guild, $role, $callback) });
+    } else {
+        my $url = $self->base_url . "/guilds/$guild/roles/$role";
+
+        $self->ua->delete($url => sub
+        {
+            my ($ua, $tx) = @_;
+
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+
+    }    
+}
+
 sub interaction_response {
     my ($self, $id, $token, $customid, $label, $callback) = @_;
 
-    my $route = "/interactions/$id/$token/callback";
+    my $route = "POST /interactions/$id/$token/callback";
 
     my $json = {
         'type' => 7,
@@ -404,6 +418,31 @@ sub interaction_response {
     }
 }
 
+sub get_message {
+    my ($self, $channel, $message, $callback) = @_;
+
+    my $route = "GET /channels/$channel";
+    if ( my $delay = $self->_rate_limited($route))
+    {
+        $self->log->warn('[REST.pm] [get_message] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->get_message($channel, $message, $callback) });
+    }
+    else
+    {
+        my $url = $self->base_url . "/channels/$channel/messages/$message";
+
+        return $self->ua->get($url => sub
+        {
+            my ($ua, $tx) = @_;
+
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            print $tx->res->json;
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
 # send_message will check if it is being passed a hashref or a string.
 # This way it is simple to just send a message by passing in a string, but it can also support things like embeds and the TTS flag when needed.
 sub send_message
