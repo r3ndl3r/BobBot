@@ -507,22 +507,34 @@ sub get_channel_messages {
     $self->rest->get_channel_messages($channel, $callback);
 }
 
-sub get_guild_roles {
-    my ($self, $guild, $callback) = @_;
-
-    $self->rest->get_guild_roles($guild, $callback);
-}
-
 sub modify_guild_role {
     my ($self, $guild, $role, $json, $callback) = @_;
 
     $self->rest->modify_guild_role($guild, $role, $json, $callback);
 }
 
+sub create_guild_role {
+    my ($self, $guild, $json, $callback) = @_;
+
+    $self->rest->create_guild_role($guild, $json, $callback);
+}
+
+sub delete_guild_role {
+    my ($self, $guild, $role, $callback) = @_;
+
+    $self->rest->delete_guild_role($guild, $role, $callback);
+}
+
 sub interaction_response {
     my ($self, $id, $token, $customid, $label, $callback) = @_;
 
     $self->rest->interaction_response($id, $token, $customid, $label, $callback);
+}
+
+sub get_message {
+    my ($self, $channel, $message, $callback) = @_;
+
+    $self->rest->get_message($channel, $message, $callback);
 }
 
 =head2 send_file()
