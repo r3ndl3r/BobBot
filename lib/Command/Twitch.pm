@@ -313,7 +313,7 @@ sub twitch {
                         sub {
                                 my $msg = shift;
                                 $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $title;
-                                $discord->edit_message($config->{'channel'}, $tMi{$stream});
+                                $discord->edit_message($config->{'channel'}, $tMi{$stream}, $msg);
 
                         }
                     );
