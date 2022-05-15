@@ -50,11 +50,13 @@ sub cmd_test
     my $pattern = $self->pattern;
 
     my $channel = $msg->{'channel_id'};
+    my $id      = $msg->{'id'};
     my $author  = $msg->{'author'};
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
-    $discord->delete_message($channel, $msg->{'id'});
+    print Data::Dumper::Dumper($discord->get_guild(903864277025292328));return;
+    #$discord->delete_message($channel, $msg->{'id'});
     my $time = localtime;
 
     $discord->send_message($channel, 
@@ -123,6 +125,8 @@ sub cmd_test
         #}
     );
 
+    print "$channel $id\n";
+    $self->discord->send_ack($channel, $id);
 }
 
 1;

@@ -28,6 +28,7 @@ sub cmd_meme {
     my ($self, $msg) = @_;
 
     my $channel = $msg->{'channel_id'};
+    my $id      = $msg->{'id'};
     my $author  = $msg->{'author'};
     my $args    = $msg->{'content'};
     my $discord = $self->discord;
@@ -42,6 +43,7 @@ sub cmd_meme {
         my $image = LWP::UserAgent->new->get();
 
         $discord->send_message($channel, $json->{url});
+        $self->discord->send_ack($channel, $id);
     } else {
         $discord->send_message($channel, "Error: " . $meme->status_line . ". Try again later");
 }
