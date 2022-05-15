@@ -309,7 +309,7 @@ sub twitch {
                 # Update title.
                 my %tMi = %{ $db->get('twitch-message-id') };
                 if ($tMi{$stream}) {
-                    my $msg = $discord->get_message($config->{'channel'}, $tMi{$stream},
+                    $discord->get_message($config->{'channel'}, $tMi{$stream},
                         sub {
                                 my $msg = shift;
                                 $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $title;

@@ -1,11 +1,12 @@
 package Command::Catch;
-
 use feature 'say';
 use utf8;
+
 use Moo;
 use strictures 2;
 use namespace::clean;
 
+use Storable qw(freeze);
 
 use Exporter qw(import);
 use Component::DBI;
@@ -29,6 +30,13 @@ has on_message => ( is => 'ro', default =>
           
             sub {
                     my ($s, $m) = @_;
+                    my $db  = Component::DBI->new();
+                    my $dbh = $db->{'dbh'};
+
+                    my $sql = "INSERT INTO messages (id, content) VALUES(?, ?)";
+                    my $sth = $dbh->prepare($sql);
+
+                    $sth->execute($m->{'id'}, freeze($m)) ;
 
                     if (!(exists $m->{'author'}{'bot'} and $m->{'author'}{'bot'})) {
                         cmd_catch($self, $m);
