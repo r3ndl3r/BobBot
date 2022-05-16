@@ -2,7 +2,7 @@
 requires 'Moo';                         # OO Framework
 requires 'strictures' => '2';           # Enables strict and warnings with specific settings
 requires 'namespace::clean';            # Removes declared and imported symbols from your compiled package
-requires 'Mojo::Discord';               # Discord Library
+#requires 'Mojo::Discord';               # Discord Library
 requires 'Mojo::IOLoop';                # Required for persistent websocket connection (Discord)
 requires 'Mojo::JSON';                  # Used to translate to and from JSON for talking to APIs
 requires 'Mojo::UserAgent';             # Used for HTTP(S) calls to APIs so we can customize our UA and options
@@ -16,13 +16,19 @@ requires 'Config::Tiny';                # .ini config file support
 requires 'URI::Escape';                 # Escape URLs for use with APIs
 requires 'URI::Encode';                 # Used to encode any text to be URL safe
 requires 'Text::ASCIITable';            # Generate an ASCII table using data from perl structures
-requires 'Time::Duration';              # Used for uptime calculation currently
 requires 'DBI';                         # Database connection
 requires 'FindBin' => '1.51';           # For including libs in the project directory
 requires 'DateTime';                    # Used to get specifc-format unix epoch timestamps
 requires 'Data::Dumper';                # Used for debugging
-requires 'Games::Cards';                # For picking random playing cards
 requires 'Unicode::UTF8';
+requires 'Config::Tiny';
+requires 'JSON::MaybeXS';
+requires 'Time::Duration';
+requires 'Role::EventEmitter';
+requires 'LWP::UserAgent';
+requires 'XML::Simple';
+requires 'DBD::MariaDB';
+requires 'Time::ParseDate';
 
 
 # Testing
