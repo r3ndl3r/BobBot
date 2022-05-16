@@ -30,6 +30,7 @@ requires 'XML::Simple';
 requires 'DBD::MariaDB';
 requires 'Time::ParseDate';
 requires 'JSON';
+requires 'HTML::TreeBuilder';
 
 
 # Testing
