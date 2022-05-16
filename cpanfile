@@ -31,6 +31,7 @@ requires 'DBD::MariaDB';
 requires 'Time::ParseDate';
 requires 'JSON';
 requires 'HTML::TreeBuilder';
+requires 'HTML::FormatText';
 
 
 # Testing
