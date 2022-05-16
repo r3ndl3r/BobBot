@@ -1,0 +1,14 @@
+Installing and setup of database.
+
+# apt -y install cpanminus mariadb-server libmariadb-dev libexpat1-dev gcc
+
+# git clone https://github.com/vsTerminus/Mojo-Discord
+
+# cd Mojo-Discord && mkdir logs && cpanm --installdeps .
+# cp -r lib/Mojo ~/perl5/lib/perl5/
+# cd ~/ && rm -rf Mojo-Discord
+
+# mysql_secure_installation
+
+mysql> CREATE DATABASE blahblahblahbal;
+
