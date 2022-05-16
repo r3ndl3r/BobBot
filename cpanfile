@@ -29,6 +29,7 @@ requires 'LWP::UserAgent';
 requires 'XML::Simple';
 requires 'DBD::MariaDB';
 requires 'Time::ParseDate';
+requires 'JSON';
 
 
 # Testing
