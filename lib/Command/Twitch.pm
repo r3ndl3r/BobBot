@@ -207,7 +207,22 @@ sub twitch {
         my $title = getStream($stream, $config);
         
         if ($title) {
-            
+
+            # Update title.
+            my %tMi = %{ $db->get('twitch-message-id') };
+            if ($tMi{$stream}) {
+                $discord->get_message($config->{'channel'}, $tMi{$stream},
+                    sub {
+                            my $oldmsg = shift;
+                            if ($title ne $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'}) {
+                                $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'} = $title;
+                                $discord->edit_message($config->{'channel'}, $tMi{$stream}, $oldmsg);
+                            }
+
+                    }
+                );
+            }
+
             # Check global package variable for onlineless.
             if (!$online{$stream}) {
                 # Set stream as online in persistant hash.
@@ -305,19 +320,6 @@ sub twitch {
                 # Update latest stream online timestamp.
                 $laston{$stream} = time();
                 $db->set('laston', \%laston);
-
-                # Update title.
-                my %tMi = %{ $db->get('twitch-message-id') };
-                if ($tMi{$stream}) {
-                    $discord->get_message($config->{'channel'}, $tMi{$stream},
-                        sub {
-                                my $msg = shift;
-                                $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $title;
-                                $discord->edit_message($config->{'channel'}, $tMi{$stream}, $msg);
-
-                        }
-                    );
-                }
             }
         } else {
             # Stream offline so remove it from online hash.

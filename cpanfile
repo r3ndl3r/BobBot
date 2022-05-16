@@ -2,8 +2,7 @@
 requires 'Moo';                         # OO Framework
 requires 'strictures' => '2';           # Enables strict and warnings with specific settings
 requires 'namespace::clean';            # Removes declared and imported symbols from your compiled package
-#requires 'Mojo::Discord';               # Discord Library
-requires 'Mojo::WebService::LastFM';    # Last.FM Library
+requires 'Mojo::Discord';               # Discord Library
 requires 'Mojo::IOLoop';                # Required for persistent websocket connection (Discord)
 requires 'Mojo::JSON';                  # Used to translate to and from JSON for talking to APIs
 requires 'Mojo::UserAgent';             # Used for HTTP(S) calls to APIs so we can customize our UA and options
@@ -22,7 +21,6 @@ requires 'DBI';                         # Database connection
 requires 'FindBin' => '1.51';           # For including libs in the project directory
 requires 'DateTime';                    # Used to get specifc-format unix epoch timestamps
 requires 'Data::Dumper';                # Used for debugging
-requires 'Geo::Distance';               # Calculate the distance pilots are from airfields in Hoggit.pm
 requires 'Games::Cards';                # For picking random playing cards
 requires 'Unicode::UTF8';
 
