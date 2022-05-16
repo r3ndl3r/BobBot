@@ -441,6 +441,38 @@ sub get_message {
         });
     }
 }
+
+
+sub bulk_delete_message {
+    my ($self, $channel, $msgs, $callback) = @_;
+
+    my $route = "POST /channels/$channel";
+
+    print ref $msgs, "\n";
+    return unless ref $msgs eq 'ARRAY';
+    my $json = {
+        'messages' => [ @{ $msgs } ]
+    };
+    print Data::Dumper::Dumper(\$json);
+
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn('[REST.pm] [interaction_response] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->bulk_delete_message($channel, $msgs, $callback) });
+    } else {
+        my $post_url = $self->base_url . "/channels/$channel/messages/bulk-delete";
+
+        $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+            my ($ua, $tx) = @_;
+
+            my $headers = $tx->res->headers;
+            $self->_set_route_rate_limits($route, $headers);
+            
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
+
 # send_message will check if it is being passed a hashref or a string.
 # This way it is simple to just send a message by passing in a string, but it can also support things like embeds and the TTS flag when needed.
 sub send_message
@@ -654,7 +686,8 @@ sub delete_message
         };
     }
 
-    my $route = "DELETE /channels/$dest/messages/$msgid";
+    my $route = "DELETE /channels/$dest";
+    
     if ( my $delay = $self->_rate_limited($route))
     {
         $self->log->warn('[REST.pm] [delete_message] Route is rate limited. Trying again in ' . $delay . ' seconds');

@@ -84,25 +84,31 @@ sub cmd_del {
             sub {
                 my $db       = Component::DBI->new();
                 my @messages = @{ $_[0] };
-                my %delete;
+                my %delete   = %{ $db->get('delete') };
 
-                for my $msg (@messages) {
-                                                                # #oz
-                    if ( ($args && $args eq 'all') || $channel eq 972066662868213820) {
-                        $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                if ($args && $args eq 'me') {
+                    my @msgs = map { $_->{'author'}{'id'} eq $author->{'id'} ? $_->{'id'} : () } @messages;
 
-                    } elsif ($args && $args eq 'me' && $msg->{'author'}{'id'} eq $author->{'id'}) {
-                        $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                    $discord->bulk_delete_message($channel, \@msgs);
 
-                    } else {
-                        # Bot
-                        if ($msg->{'author'}{'id'} eq 955818369477640232) {
-                            $delete{$msg->{'id'}} = $msg->{'channel_id'};
-                        }
-                    }
                 }
 
-                $db->set('delete', \%delete);
+                # All messages or #oz
+                if (($args && $args eq 'all') || $channel eq 972066662868213820) {
+                    my @msgs = map { $_->{'id'} } @messages;
+
+                    $discord->bulk_delete_message($channel, \@msgs);
+
+                }
+
+                #         # Bot
+                #         if ($msg->{'author'}{'id'} eq 955818369477640232) {
+                #             $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                #         }
+                #     }
+                # }
+
+                # $db->set('delete', \%delete);
             }
         );
     }

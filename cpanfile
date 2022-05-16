@@ -26,6 +26,7 @@ requires 'JSON::MaybeXS';
 requires 'Time::Duration';
 requires 'Role::EventEmitter';
 requires 'LWP::UserAgent';
+requires 'LWP::Protocol::https';
 requires 'XML::Simple';
 requires 'DBD::MariaDB';
 requires 'Time::ParseDate';

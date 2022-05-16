@@ -537,6 +537,12 @@ sub get_message {
     $self->rest->get_message($channel, $message, $callback);
 }
 
+sub bulk_delete_message {
+    my ($self, $channel, $msgs, $callback) = @_;
+
+    $self->rest->bulk_delete_message($channel, $msgs, $callback);
+}
+
 =head2 send_file()
     Requires you to pass in the channel id, an args hashref, and optionally a callback
     The args hashref must contain:
