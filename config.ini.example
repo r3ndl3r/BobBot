@@ -41,8 +41,8 @@ log_dir=logs
 
 redirect_url = http://github.com/
 
-
 [db]
-username = bobbot
-password = bobbot
-
+username = rendler
+password = rendler
+database = bobbot
+type = MariaDB
