@@ -1059,6 +1059,7 @@ sub create_reaction
 {
     my ($self, $channel, $msgid, $emoji, $callback) = @_;
 
+    return unless $channel;
     my $route = "PUT /channels/$channel";
     if ( my $delay = $self->_rate_limited($route) )
     {
