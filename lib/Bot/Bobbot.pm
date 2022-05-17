@@ -250,8 +250,6 @@ sub discord_on_message_create
                     }
                 }
             }
-        #} elsif (!(exists $author->{'bot'} and $author->{'bot'})) {
-        #    Command::Catch::cmd_catch($self, $hash);
         }
     });
 }

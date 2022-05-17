@@ -36,8 +36,6 @@ has timer_sub => ( is => 'ro', default =>
                     $db->set('delete', \%delete);
                     return;
                 }
-
-                ;
             }
         ) 
     }
