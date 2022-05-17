@@ -2,6 +2,7 @@ package Component::DBI;
 use strict;
 use warnings;
 use Storable qw(freeze thaw);
+use Config::Tiny;
 use DBI;
 
 use Exporter qw(import);
@@ -10,26 +11,13 @@ our @EXPORT = qw( get set );
 
 
 sub new {
-    my $class = shift;
-    my $self  = {};
-    my %attr  = ( PrintError => 0, RaiseError => 1 );
-    my %auth;
+    my $class  = shift;
+    my $self   = {};
+    my %attr   = ( PrintError => 0, RaiseError => 1 );
+    my $config = Config::Tiny->read('config.ini', 'utf8');
 
-    open AUTH, "/home/rendler/.dbi.auth" or die $!;
-
-    while (<AUTH>) {
-        chomp;
-        s/\s//g;
-        my ($key, $value) = split /=/, $_;
-        if ($key =~ /^user(name)?$/i) {
-            $auth{dbUser} = $value;
-        } elsif ($key =~ /^pass(word)?$/i) {
-            $auth{dbPass} = $value;
-        }
-    }
-
-    $self->{'dsn'} = "DBI:MariaDB:bobbot";
-    $self->{'dbh'} = DBI->connect($self->{'dsn'}, $auth{dbUser}, $auth{dbPass}, \%attr) or die $!;
+    $self->{'dsn'} = "DBI:$config->{'db'}{'type'}:$config->{'db'}{'database'}";
+    $self->{'dbh'} = DBI->connect($self->{'dsn'}, $config->{'db'}{'username'}, $config->{'db'}{'password'}, \%attr) or die $!;
 
     bless ($self, $class);
 
