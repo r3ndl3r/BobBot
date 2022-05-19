@@ -12,7 +12,7 @@ our @EXPORT_OK = qw(cmd_del);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-has name                => ( is => 'ro', default => 'Del' );
+has name                => ( is => 'ro', default => 'Delete' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Delete messages.' );
 has pattern             => ( is => 'ro', default => '^del ?' );
@@ -44,16 +44,19 @@ has timer_sub => ( is => 'ro', default =>
 
 has on_message => ( is => 'ro', default =>
     sub {
-        my $self = shift;
+        my $self   = shift;
+        my $config = $self->{'bot'}{'config'}{'oz'};
+        
         $self->discord->gw->on('INTERACTION_CREATE' =>     
             sub {
                 my ($gw, $msg) = @_;
+                
 
                 my $id    = $msg->{'id'};
                 my $token = $msg->{'token'};
                 my $data  = $msg->{'data'};
 
-                if ($data->{'custom_id'} eq 'delete.all') {
+                if ($data->{'custom_id'} eq 'delete.all' && $msg->{'channel_id'} eq $config->{'channel'}) {
                     $msg->{'content'} = 'all';
                     $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "DELETING PLEASE WAIT...", sub { cmd_del($self, $msg) });
                 }    
