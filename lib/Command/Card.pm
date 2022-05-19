@@ -27,6 +27,8 @@ has usage               => ( is => 'ro', default => <<EOF
 Pick a card!
 
 !card
+
+!card battle [\@opponent]
 EOF
 );
 
