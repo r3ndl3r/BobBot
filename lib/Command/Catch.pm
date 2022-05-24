@@ -81,7 +81,12 @@ sub cmd_catch {
                 $msg = $msg->[rand @{ $msg }];
             }
 
-            $discord->send_message($channel, $msg);
+            if (my ($file) = $msg =~ /^file:(.*)$/) {
+                my @file = split /\//, $file;
+                $discord->send_image($channel, {'content' => "$file[-1]:", 'name' => $file[-1], 'path' => $file } );
+            } else {
+                $discord->send_message($channel, $msg);
+            }
         }
     }
 }
