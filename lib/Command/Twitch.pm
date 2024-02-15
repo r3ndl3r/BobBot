@@ -32,7 +32,12 @@ has timer_sub           => ( is => 'ro',    default => sub
     }
 );
 
+has cleanup_timer_seconds => ( is => 'ro', default => 300 ); # Run every 5 minutes
 
+has cleanup_timer_sub => ( is => 'ro', default => sub {
+    my $self = shift;
+    Mojo::IOLoop->recurring( $self->cleanup_timer_seconds => sub { $self->cleanup_dead_messages; } )
+});
 
 my $start = 1;
 my %online;
@@ -455,5 +460,27 @@ sub getT {
     return $db->dbh->selectrow_array("SELECT tag FROM twitch WHERE streamer = ?", undef, shift);
 }
 
+sub cleanup_dead_messages {
+    my $self = shift;
+    my $discord = $self->discord;
+    my $config  = $self->{'bot'}{'config'}{'twitch'};
+    my $channel = $config->{'channel'};
+    my $timeout = 300; # Timeout in seconds (5 minutes)
+
+    my @streams = getStreams();
+
+    for my $streamer (@streams) {
+        my $laston = getLaston($streamer);
+
+        if (defined $laston && $laston > 0 && (time() - $laston) > $timeout) {
+            # Streamer has been offline for longer than the timeout period, delete message
+            my $message_id = getMessage($streamer);
+            if ($message_id) {
+                $discord->delete_message($channel, $message_id);
+                setMessage($streamer, 0); # Update database to indicate message has been deleted
+            }
+        }
+    }
+}
 
 1;

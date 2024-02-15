@@ -80,8 +80,10 @@ sub forecast {
     }
 
     $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
-}
 
+    # Clean up old forecast messages
+    $self->cleanup_forecast_messages();
+}
 
 sub currentTemp {
     my %forecast = @_;
@@ -102,7 +104,6 @@ sub currentTemp {
 
     return %forecast;
 }
-
 
 sub cmd_forecast {
     my ($self, $city, $forecast) = @_;
@@ -218,7 +219,6 @@ sub cmd_forecast {
     );
 }
 
-
 sub icon {
     my $code = shift;
 
@@ -235,4 +235,28 @@ sub icon {
 
     return exists $codes{$code} ? ":$codes{$code}:" : ":SHRUGGERS:";
 }
+
+sub cleanup_forecast_messages {
+    my $self = shift;
+    my $discord = $self->discord;
+    my %forecast = (
+        'melbourne' => '968413731098886175',
+        'bendigo'   => '969160853825921044',
+    );
+
+    for my $city (keys %forecast) {
+        my $db = Component::DBI->new();
+        my $message_ids = $db->get("forecast-$city");
+
+        # Delete all messages except the most recent one
+        my @sorted_ids = sort { $b <=> $a } grep { /^\d+$/ } @{$message_ids};
+        for my $id (@sorted_ids[1..$#sorted_ids]) {
+            $discord->delete_message($forecast{$city}, $id);
+        }
+
+        # Update database to keep only the most recent message
+        $db->set("forecast-$city", [ $sorted_ids[0] ]);
+    }
+}
+
 1;
