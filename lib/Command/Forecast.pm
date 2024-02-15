@@ -141,7 +141,7 @@ sub cmd_forecast {
 
         my $date = str2time ($day->{'start-time-local'});
 
-        push @msg, (sprintf "**%s**:", strftime "%A, %-d %B %Y", localtime $date);
+        push @msg, (sprintf "**%s**:", strftime "%a, %-d %B", localtime $date);
         
         # Populate %minMax with min/max temps and precipitation information. Order using 1-3 hash keys.
         my %minMax;
@@ -179,11 +179,15 @@ sub cmd_forecast {
         ++$i;
     }
 
-    push @msg, sprintf "Last updated: **%s**.\nUpdating every: **%s** minutes.\n(Please turn off channel notifications if this is annoying you.)", strftime("%a %b %d %H:%M:%S %Y", localtime), 3600 / 60;
+    push @msg, sprintf "Last updated: **%s**.\nUpdating every: **%s** minutes.", strftime("%a %b %d %H:%M:%S %Y", localtime), 3600 / 60;
+
+    my $content = "Current temp in **$city** is: **$forecast->{'temp'}**°C\n\n" . join ("\n", @msg);
+
+    $content = substr( $content, 0, 2000 );
 
     $discord->send_message($forecast->{'channel'}, 
         {
-            'content' => "Current temperature in **$city** is: **$forecast->{'temp'}**°C\n\n" . join ("\n", @msg),
+            'content' => $content,
             'components' => [
                 {
                     'type' => 1,
@@ -199,14 +203,14 @@ sub cmd_forecast {
                 }
             ],
         },
-        sub { 
+        sub {
             my $id  = shift->{'id'};
             my $db  = Component::DBI->new();
 
             if (defined $db->get("forecast-$city")) {
                 my $old = ${ $db->get("forecast-$city") };
             
-                $discord->delete_message($forecast->{'channel'}, $old);
+                $discord->delete_message($forecast->{'channel'}, $old) if $old && $old =~ /^\d+$/;
             }
 
             $db->set("forecast-$city", \$id);

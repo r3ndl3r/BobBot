@@ -83,7 +83,7 @@ sub cmd_role {
 
             if ($name eq $roles->{$role}->{'name'}) {
 
-                $discord->add_guild_member_role($msg->{'guild_id'}, $user, $roles->{$role}->{'id'});
+                $discord->add_guild_member_role($msg->{'guild_id'}, $user, $roles->{$role}->{'id'}, sub{print Data::Dumper::Dumper(\@_);});
             }
         }
     }

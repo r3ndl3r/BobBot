@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-
 use v5.10;
 use strict;
 use warnings;
@@ -7,42 +6,15 @@ use utf8;
 
 use FindBin 1.51 qw( $RealBin );
 use lib "$RealBin/lib";
-
 use Bot::Bobbot;
-
 use Config::Tiny;
 use Term::ANSIColor;
+use File::Find;
+use Cwd 'abs_path';
 
 binmode STDOUT, ":utf8";
 
-use Command::ATs;
-use Command::Twitch;
-use Command::Avatar;
-use Command::Bob;
-use Command::Card;
-use Command::Catch;
-use Command::Chuck;
-use Command::Copy;
-use Command::Cursed;
-use Command::Del;
-use Command::Dump;
-use Command::Edit;
-use Command::Eval;
-use Command::Forecast;
-use Command::Fun;
-use Command::Hadi;
-use Command::Help;
-use Command::Meme;
-use Command::Oz;
-use Command::Paste;
-use Command::Restart;
-use Command::Role;
-use Command::Say;
-use Command::Storage;
-use Command::Test;
-use Command::Uptime;
-use Command::Yahya;
-
+my $dir = abs_path('./lib/Command');
 print "\n" . localtime . color('green') . " STARTING MOFO\n" . color('reset');
 # Fallback to "config.ini" if the user does not pass in a config file.
 my $config_file = $ARGV[0] // 'config.ini';
@@ -52,35 +24,27 @@ say localtime(time) . " Loaded Config: $config_file";
 # Initialize the bot
 my $bot = Bot::Bobbot->new('config' => $config);
 
-# Register the commands
-# The new() function in each command will register with the bot.
-$bot->add_command( Command::ATs->new            ('bot' => $bot) );
-$bot->add_command( Command::Twitch->new         ('bot' => $bot) );
-$bot->add_command( Command::Avatar->new         ('bot' => $bot) );
-$bot->add_command( Command::Bob->new            ('bot' => $bot) );
-$bot->add_command( Command::Card->new           ('bot' => $bot) );
-$bot->add_command( Command::Catch->new          ('bot' => $bot) );
-$bot->add_command( Command::Chuck->new          ('bot' => $bot) );
-$bot->add_command( Command::Copy->new           ('bot' => $bot) );
-$bot->add_command( Command::Cursed->new         ('bot' => $bot) );
-$bot->add_command( Command::Del->new            ('bot' => $bot) );
-$bot->add_command( Command::Dump->new           ('bot' => $bot) );
-$bot->add_command( Command::Edit->new           ('bot' => $bot) );
-$bot->add_command( Command::Eval->new           ('bot' => $bot) );
-$bot->add_command( Command::Forecast->new       ('bot' => $bot) );
-$bot->add_command( Command::Fun->new            ('bot' => $bot) );
-$bot->add_command( Command::Hadi->new           ('bot' => $bot) );
-$bot->add_command( Command::Help->new           ('bot' => $bot) );
-$bot->add_command( Command::Meme->new           ('bot' => $bot) );
-$bot->add_command( Command::Oz->new             ('bot' => $bot) );
-$bot->add_command( Command::Paste->new          ('bot' => $bot) );
-$bot->add_command( Command::Restart->new        ('bot' => $bot) );
-$bot->add_command( Command::Role->new           ('bot' => $bot) );
-$bot->add_command( Command::Say->new            ('bot' => $bot) );
-$bot->add_command( Command::Storage->new        ('bot' => $bot) );
-$bot->add_command( Command::Test->new           ('bot' => $bot) );
-$bot->add_command( Command::Uptime->new         ('bot' => $bot) );
-$bot->add_command( Command::Yahya->new          ('bot' => $bot) );
+find(sub {
+    return unless /\.pm$/;
+    require "$File::Find::dir/$_";
+
+    my $module = $_;
+       $module =~ s/\.pm$//;
+    
+    print "use Command::$module\n";
+    eval "use Command::$module";
+
+    my $class = "Command::$module";
+    
+    eval "use $class;";
+    
+    if ($@) {
+        warn "Failed to load module $module: $@";
+    } else {
+        $bot->add_command( $class->new( 'bot' => $bot ) );
+    }
+
+}, $dir);
 
 # Start the bot
 $bot->start();

@@ -19,7 +19,7 @@ has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Make the bot say something good' );
 has pattern             => ( is => 'ro', default => '^yahya' );
 has function            => ( is => 'ro', default => sub { \&cmd_yahya } );
-has usage               => ( is => 'ro', default => '');
+has usage               => ( is => 'ro', default => 'https://bob.rendler.org/en/commands/yahya');
 
 sub cmd_yahya {
 

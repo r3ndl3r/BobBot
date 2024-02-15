@@ -1,4 +1,4 @@
-package Command::###;
+package Command::Template;
 use feature 'say';
 use utf8;
 
@@ -8,7 +8,7 @@ use strictures 2;
 use namespace::clean;
 
 use Exporter qw(import);
-our @EXPORT_OK = qw(cmd_###);
+our @EXPORT_OK = qw(cmd_template);
 
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
@@ -18,7 +18,7 @@ has name                => ( is => 'ro', default => '###' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => '###' );
 has pattern             => ( is => 'ro', default => '^### ?' );
-has function            => ( is => 'ro', default => sub { \&cmd_### } );
+has function            => ( is => 'ro', default => sub { \&cmd_template } );
 has usage               => ( is => 'ro', default => <<EOF
 ###
 EOF

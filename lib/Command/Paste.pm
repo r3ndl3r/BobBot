@@ -37,7 +37,7 @@ sub cmd_paste {
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
-    if (my ($id) = $args =~ /^(\d{18})$/) {
+    if (my ($id) = $args =~ /^(\d+)$/) {
         my $db  = Component::DBI->new();
         my $dbh = $db->{'dbh'};
         
@@ -46,6 +46,7 @@ sub cmd_paste {
         $sth->execute($id);
 
         my $content = $sth->fetchrow_array();
+        print Data::Dumper::Dumper(\$content);
         if ($content) {
             my $thaw = thaw($content);
             $discord->send_message($channel, $thaw);
