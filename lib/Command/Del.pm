@@ -70,52 +70,35 @@ sub cmd_del {
     my ($self, $msg) = @_;
 
     my $discord = $self->discord;
-    my $pattern = $self->pattern;
-
     my $channel = $msg->{'channel_id'};
-    my $author  = $msg->{'author'};
     my $args    = $msg->{'content'};
-       $args    =~ s/$pattern//i;
 
-    if ($args =~ /^\d+$/) {
-        $discord->delete_message($msg->{'channel_id'}, $args);
+    # Remove the command prefix and whitespace from the arguments
+    $args =~ s/^${\$self->pattern}\s*//i;
 
-    } else {
+    if ($args eq 'all') {
         my $messages = $discord->get_channel_messages($channel,
             sub {
-                my $db       = Component::DBI->new();
-                my @messages = @{ $_[0] };
-                my %delete   = %{ $db->get('delete') };
+                my $messages = shift;
 
-                if ($args && $args eq 'me') {
-                    my @msgs = map { $_->{'author'}{'id'} eq $author->{'id'} ? $_->{'id'} : () } @messages;
+                # Extract message IDs from the messages
+                my @msg_ids = map { $_->{'id'} } @$messages;
 
-                    $discord->bulk_delete_message($channel, \@msgs);
+                # Delete all messages in the channel in batches of 100
+                while (@msg_ids) {
+                    my @batch = splice @msg_ids, 0, 100;
+                    $discord->bulk_delete_message($channel, \@batch);
 
+                    # Delay between batches to avoid rate limiting
+                    sleep(1);
                 }
-
-                # All messages or #oz
-                if (($args && $args eq 'all') || $channel eq 972066662868213820) {
-                    my @msgs = map { $_->{'id'} } @messages;
-
-                    $discord->bulk_delete_message($channel, \@msgs);
-
-                }
-
-                #         # Bot
-                #         if ($msg->{'author'}{'id'} eq 955818369477640232) {
-                #             $delete{$msg->{'id'}} = $msg->{'channel_id'};
-                #         }
-                #     }
-                # }
-
-                # $db->set('delete', \%delete);
             }
         );
     }
 
-    # Delete the !del command.
+    # Delete the !del command
     $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
 }
+
 
 1;
