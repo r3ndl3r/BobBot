@@ -70,6 +70,85 @@ sub cmd_del {
     my ($self, $msg) = @_;
 
     my $discord = $self->discord;
+    my $pattern = $self->pattern;
+
+    my $channel = $msg->{'channel_id'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
+       $args    =~ s/$pattern//i;
+
+    if ($args =~ /^\d+$/) {
+        $discord->delete_message($msg->{'channel_id'}, $args);
+
+    } else {
+        my $messages = $discord->get_channel_messages($channel,
+            sub {
+                my $db       = Component::DBI->new();
+                my @messages = @{ $_[0] };
+                my %delete   = %{ $db->get('delete') };
+
+                if ($args && $args eq 'me') {
+                    my @msgs = map { $_->{'author'}{'id'} eq $author->{'id'} ? $_->{'id'} : () } @messages;
+
+                    for my $id (@msgs) {
+                        $discord->delete_message($channel, $id);
+                        Mojo::IOLoop->timer(5, sub {});  # Delay of 1 second
+                    }
+
+                }
+
+                # All messages or #oz
+                if (($args && $args eq 'all') || $channel eq 972066662868213820) {
+                    my @msgs = map { $_->{'id'} } @messages;
+
+                    for my $id (@msgs) {
+                        $discord->delete_message($channel, $id);
+                        Mojo::IOLoop->timer(1, sub {});  # Delay of 1 second
+                    }
+
+                }
+
+                #         # Bot
+                #         if ($msg->{'author'}{'id'} eq 955818369477640232) {
+                #             $delete{$msg->{'id'}} = $msg->{'channel_id'};
+                #         }
+                #     }
+                # }
+
+                # $db->set('delete', \%delete);
+            }
+        );
+    }
+
+    # Delete the !del command.
+    $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
+}
+
+sub delete_message_with_rate_limit {
+    my ($self, $channel, $msg_id) = @_;
+
+    my $route = "DELETE /channels/$channel/messages/$msg_id";
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn('[Command::Del] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->delete_message_with_rate_limit($channel, $msg_id) });
+    } else {
+        $self->discord->delete_message($channel, $msg_id);
+    }
+}
+
+sub _rate_limited {
+    my ($self, $route) = @_;
+
+    # Implement your rate limiting logic here
+    # For example, you could check a rate limit counter for the given route
+
+    return 0;  # Return 0 if not rate limited, or the number of seconds to wait before retry
+}
+
+sub cmd_del_orig {
+    my ($self, $msg) = @_;
+
+    my $discord = $self->discord;
     my $channel = $msg->{'channel_id'};
     my $args    = $msg->{'content'};
 
