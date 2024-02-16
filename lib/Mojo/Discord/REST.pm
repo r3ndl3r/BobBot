@@ -442,8 +442,32 @@ sub get_message {
     }
 }
 
-
 sub bulk_delete_message {
+    my ($self, $channel_id, $message_ids, $callback) = @_;
+
+    my $route = "POST /channels/$channel_id";
+    my $json = {
+        'messages' => $message_ids
+    };
+
+    if ( my $delay = $self->_rate_limited($route) ) {
+        $self->log->warn("[REST.pm] [bulk_delete_message] Route is rate limited. Trying again in $delay seconds");
+        Mojo::IOLoop->timer($delay => sub { $self->bulk_delete_message($channel_id, $message_ids, $callback) });
+    } else {
+        my $post_url = $self->base_url . "/channels/$channel_id/messages/bulk-delete";
+
+        $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+            my ($ua, $tx) = @_;
+
+            my $headers = $tx->res->headers;
+            $self->_set_route_rate_limits($route, $headers);
+            
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
+sub bulk_delete_message_orig {
     my ($self, $channel, $msgs, $callback) = @_;
 
     my $route = "POST /channels/$channel";
