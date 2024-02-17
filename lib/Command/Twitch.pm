@@ -32,13 +32,6 @@ has timer_sub           => ( is => 'ro',    default => sub
     }
 );
 
-has cleanup_timer_seconds => ( is => 'ro', default => 300 ); # Run every 5 minutes
-
-has cleanup_timer_sub => ( is => 'ro', default => sub {
-    my $self = shift;
-    Mojo::IOLoop->recurring( $self->cleanup_timer_seconds => sub { $self->cleanup_dead_messages; } )
-});
-
 my $start = 1;
 my %online;
 my $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3';
@@ -115,9 +108,21 @@ sub twitch {
 
             }    
 
-            # Check if they already have a message on discord. If yes, do nothing.
-            setLaston($streamer); 
-            next if $message;    
+            # Check if they already have a message on discord. 
+            setLaston($streamer);
+            # If yes update Last update: field
+            if ($message) {
+                $discord->get_message($config->{'channel'}, $message,
+                    sub {
+                        my $oldmsg = shift;
+                        $oldmsg->{'embeds'}[0]{'fields'}[2]{'value'} = localtime;
+                        $discord->edit_message($config->{'channel'}, $message, $oldmsg);
+                    }
+                );
+                
+                next;
+            }
+
                         
             my $time = localtime;
             my $embed = {   
@@ -143,6 +148,10 @@ sub twitch {
                                         },
                                         {
                                             'name'  => 'Online since:',
+                                            'value' => $time,
+                                        },
+                                                                                {
+                                            'name'  => 'Last update:',
                                             'value' => $time,
                                         },
                                     ],
@@ -193,6 +202,8 @@ sub twitch {
 
         }
     }
+    
+    cleanup_dead_messages($self);
 }
 
 sub addT {
