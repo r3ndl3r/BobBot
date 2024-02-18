@@ -10,6 +10,8 @@ use Component::DBI;
 use LWP::UserAgent;
 use JSON;
 use Data::Dumper;
+use Mojo::Promise;
+use Date::Parse;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_twitch);
@@ -19,7 +21,7 @@ has discord             => ( is => 'lazy', builder => sub { shift->bot->discord 
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has name                => ( is => 'ro',    default => 'Twitch' );
 has access              => ( is => 'ro',    default => 0 );
-has timer_seconds       => ( is => 'ro',    default => 60 );
+has timer_seconds       => ( is => 'ro',    default => 300 );
 has description         => ( is => 'ro',    default => 'Twitch notification system.' );
 has pattern             => ( is => 'ro',    default => '^t(witch)? ?' );
 has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
@@ -32,6 +34,7 @@ has timer_sub           => ( is => 'ro',    default => sub
     }
 );
 
+my $debug = 1;
 my $start = 1;
 my %online;
 my $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3';
@@ -59,151 +62,171 @@ sub cmd_twitch {
     if ($arg =~ /^d(el(ete)?)?$/ and $streamer)    { delT(@cmd);  return }
     if ($arg =~ /^l(ist)?$/)                       { listT(@cmd); return }
     if ($arg =~ /^t(ag)?$/ && $streamer)           { tagT(@cmd);  return }
-    if ($args =~ /^refresh/) { twitch(@_) }
+    if ($args =~ /^r(efresh)?$/) {
+        $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
+        twitch(@_) 
+    }
 }
 
 
 sub twitch {
-    my $self = shift;
+    my $self    = shift;
     my $discord = $self->discord;
     my $config  = $self->{'bot'}{'config'}{'twitch'};
-    my $channel;
 
-    my @streams = getStreams();
-    
-    for my $streamer (@streams) {
-        my $topic = getStream($streamer);
-        
-        # Streamer is online;
-        if ($topic) {
+    $self->discord->get_channel_messages($config->{'channel'},
+        sub {
+            my $channelMessages = shift;
+            my $messages;
+            foreach my $msg (@{$channelMessages}) {
+                my $embeds = $msg->{'embeds'};
+                next unless $embeds && ref($embeds) eq 'ARRAY';
 
+                foreach my $embed (@$embeds) {
+                    my $author_name = $embed->{'author'}{'name'};
+                    $messages->{$author_name} =
+                    {
+                        'id'          => $msg->{'id'},
+                        'old_topic'   => $embed->{'fields'}[0]{'value'},
+                        'last_update' => $embed->{'fields'}[2]{'value'},
+                    };
+                }
+            }
 
+            my @streams = getStreams();
+            for my $streamer (@streams) {
+                # Check to see if streamer is online and return the topic.
+                my $topic = getStream($streamer, $config);
+                debug("ONLINE: $streamer - $topic") if $topic;
 
-            my $message = getMessage($streamer);
+                # Streamer is online;
+                if ($topic) {
+                    # If message exists then update it.
+                    if ($messages->{$streamer}{'id'}) {
+                        $discord->get_message($config->{'channel'}, $messages->{$streamer}{'id'},
+                            sub {
+                                my $oldmsg = shift;
 
-            # Update title if needed.
-            my $gt = getTopic($streamer);
-            if (defined $gt && $topic ne $gt) {
-                setTopic($streamer, $topic);
-                        
-                $discord->get_message($config->{'channel'}, $message,
-                    sub {
-                            my $oldmsg = shift;
-                            if ($topic ne $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'}) {
-                                $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'} = $topic;
-                                $discord->edit_message($config->{'channel'}, $message, $oldmsg);
+                                # Update topic if it has changed
+                                if ($messages->{$streamer}{'old_topic'} && $topic ne $messages->{$streamer}{'old_topic'}) {
+                                    debug("TOPIC CHANGED: $streamer - $topic");
+                                    $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'} = $topic;
+                                    $self->discord->edit_message($config->{'channel'}, $messages->{$streamer}{'id'}, $oldmsg);
+                                }
+
+                                # Update last update time.
+                                $oldmsg->{'embeds'}[0]{'fields'}[2]{'value'} = localtime;
+                                $discord->edit_message($config->{'channel'}, $messages->{$streamer}{'id'}, $oldmsg);
                             }
+                        );
+
+                        next;
                     }
-                );
-            }
 
-            # If last online record exists and it's less than 10 mins ago then probably stream crashed.
-            my $msg;
-            my $laston = getLaston($streamer);
+                    # Send a new message if streamer is online and no message exists.
+                    sendMessage($discord, $config, $streamer, $topic);
 
-            if (defined $laston && $laston > 0 && (time() - $laston) < 600) {
-                $msg = "**$streamer** is back online (from probable stream crash).";
-            } else {
-                $msg = "**$streamer** is online.";
+                # Streamer is offline.    
+                } else {
+                    if ($messages->{$streamer}{'id'}) {
+                        my $message = $discord->get_message($config->{'channel'}, getMessageID($streamer),
+                            # Stream offline. Delete message if it has been over 5 mins since last update.
+                            sub {
+                                my $message = shift;
+                                my $last_update = str2time($message->{'embeds'}[0]{'fields'}[2]{'value'});
+                                # Convert $last_update to epoch time.
+                                if (defined $last_update && $last_update > 0 && (time() - $last_update) > 18) {
+                                    $discord->delete_message($config->{'channel'}, $messages->{$streamer}{'id'});
+                                    setMessage($streamer, 0);
+                                }
+                            }
+                        );
 
-            }    
-
-            # Check if they already have a message on discord. 
-            setLaston($streamer);
-            # If yes update Last update: field
-            if ($message) {
-                $discord->get_message($config->{'channel'}, $message,
-                    sub {
-                        my $oldmsg = shift;
-                        $oldmsg->{'embeds'}[0]{'fields'}[2]{'value'} = localtime;
-                        $discord->edit_message($config->{'channel'}, $message, $oldmsg);
                     }
-                );
-                
-                next;
+                }
             }
-
-                        
-            my $time = localtime;
-            my $embed = {   
-                            'embeds' => [ 
-                                {   
-                                    'author' => {
-                                        'name'     => $streamer,
-                                        'url'      => "https://www.twitch.tv/$streamer",
-                                        'icon_url' => 'https://pbs.twimg.com/profile_images/1450901581876973568/0bHBmqXe_400x400.png',
-                                    },
-                                    'thumbnail' => {
-                                        'url'   => getProfile($streamer),
-                                    },
-                                    'title'       => 'Twitch Alert',
-                                    'description' => "$msg\n",
-                                    'color'       => 48491,
-                                    'url'         => "https://www.twitch.tv/$streamer",
-
-                                    'fields' => [
-                                        {
-                                            'name'  => 'Title:',
-                                            'value' => $topic,
-                                        },
-                                        {
-                                            'name'  => 'Online since:',
-                                            'value' => $time,
-                                        },
-                                                                                {
-                                            'name'  => 'Last update:',
-                                            'value' => $time,
-                                        },
-                                    ],
-                                } 
-                            ]
-                        };
-
-            
-            my $tag = getTag($streamer);
-            my @tags;
-            if ($tag) {
-                @tags = split ',', $tag;
-                @tags = map { '<@' . $_ . '>' } @tags;
-                push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags };
-
-                for (@tags) {
-                    s/\D//g;
-                    $discord->send_dm($_, $embed);
-                }
-            }        
-
-            $discord->send_message($config->{'channel'}, $embed,
-                sub {
-                    my $id = shift->{'id'};
-                    my $db = Component::DBI->new();
-
-                    $db->dbh->do("UPDATE twitch SET message = ? WHERE streamer = ?", undef, $id, $streamer);
-                }
-            );
-
-            setLaston($streamer);
-            setTopic($streamer, $topic);
-                    
-        } else {
-            # Stream offline. Delete message.
-
-            my $laston = getLaston($streamer);
-
-            # Make sure they have been offline for at least 5 mins before deleting message.
-            if (defined $laston && $laston > 0 && (time() - $laston) > 300) {
-                my $message = getMessage($streamer);
-                if ($message) {
-                    $discord->delete_message($config->{'channel'}, $message);
-                    setMessage($streamer, 0);
-                }
-            } 
-
-
         }
+    );
+}
+
+sub debug {
+    my $msg = shift;
+    say $msg if $debug == 1;
+}
+
+sub sendMessage {
+    my ($discord, $config, $streamer, $topic) = @_;
+
+    # If last online record exists and it's less than 10 mins ago then probably stream crashed.
+    my $msg;
+    my $laston = getLaston($streamer);
+
+    if (defined $laston && $laston > 0 && (time() - $laston) < 600) {
+        $msg = "**$streamer** is back online (from probable stream crash).";
+    } else {
+        $msg = "**$streamer** is online.";
     }
     
-    cleanup_dead_messages($self);
+    # Streamer is online but no message exists. Create a new message.
+    my $time = localtime;
+    my $embed = {   
+                    'embeds' => [ 
+                        {   
+                            'author' => {
+                                'name'     => $streamer,
+                                'url'      => "https://www.twitch.tv/$streamer",
+                                'icon_url' => 'https://pbs.twimg.com/profile_images/1450901581876973568/0bHBmqXe_400x400.png',
+                            },
+                            'thumbnail' => {
+                                'url'   => getProfile($streamer),
+                            },
+                            'title'       => 'Twitch Alert',
+                            'description' => "$msg\n",
+                            'color'       => 48491,
+                            'url'         => "https://www.twitch.tv/$streamer",
+
+                            'fields' => [
+                                {
+                                    'name'  => 'Title:',
+                                    'value' => $topic,
+                                },
+                                {
+                                    'name'  => 'Online since:',
+                                    'value' => $time,
+                                },
+                                                                        {
+                                    'name'  => 'Last update:',
+                                    'value' => $time,
+                                },
+                            ],
+                        } 
+                    ]
+                };
+
+    
+    my $tag = getTag($streamer);
+    my @tags;
+    if ($tag) {
+        @tags = split ',', $tag;
+        @tags = map { '<@' . $_ . '>' } @tags;
+        push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags };
+
+        for (@tags) {
+            s/\D//g;
+            $discord->send_dm($_, $embed);
+        }
+    }
+
+    $discord->send_message($config->{'channel'}, $embed,
+        sub {
+            my $id = shift->{'id'};
+            my $db = Component::DBI->new();
+
+            $db->dbh->do("UPDATE twitch SET message = ? WHERE streamer = ?", undef, $id, $streamer);
+        }
+    );
+
+    setLaston($streamer);    
 }
 
 sub addT {
@@ -336,13 +359,89 @@ sub validChannel {
     }
 }
 
-
 sub getStream {
+    my ($stream, $config) = @_;
+
+    my $oauth = 0;
+
+    if (-e 'twitch.oauth') {
+        open my $fh, '<', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+        chomp($oauth = <$fh>);
+        close $fh;
+    } else {
+        print "No OAuth token found. Generating a new file.\n";
+        open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+        print $fh $oauth;
+        close $fh;
+    }
+
+    my $url = "https://api.twitch.tv/helix/streams?user_login=$stream";
+    my $ua = LWP::UserAgent->new;
+
+    my $res = $ua->get($url,
+        'client-id'     => $config->{'client_id'},
+        'Authorization' => 'Bearer ' . $oauth,
+    );
+
+    if ($res->is_success) {
+        my $json = from_json($res->content);
+        return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
+    } elsif ($res->code == 401) {
+        debug("Invalid OAuth token.");
+        # Generate a new OAuth token
+        print "Getting new OAuth token.\n";
+        my $res = $ua->post(
+            'https://id.twitch.tv/oauth2/token',
+            Content => [
+                'client_id'     => $config->{'client_id'},
+                'client_secret' => $config->{'client_secret'},
+                'grant_type'    => 'client_credentials'
+            ]
+        );
+
+        if ($res->is_success) {
+            my $content = $res->content;
+            my ($oauth_token) = $content =~ /"access_token":"([^"]+)"/;
+
+            # Update the config with the new OAuth token
+            $config->{'oauth'} = $oauth_token;
+
+            # Save the new OAuth token to file
+            open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+            print $fh $oauth_token;
+            close $fh;
+
+            # Retry the request with the new OAuth token
+            my $res = $ua->get($url,
+                'client-id'     => $config->{'client_id'},
+                'Authorization' => 'Bearer ' . $config->{'oauth'},
+            );
+
+            if ($res->is_success) {
+                my $json = from_json($res->content);
+                return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
+            } else {
+                print "Failed to get OAuth token: " . $res->status_line;
+                return 0;
+            }
+        } else {
+            print "Failed to get OAuth token: " . $res->status_line;
+            return 0;
+        }
+    } else {
+        print "Failed to fetch stream data: " . $res->status_line;
+        return 0;
+    }
+}
+
+
+sub getStreamOld {
     my $streamer = shift;
     my $res = getTwitch($streamer);
 
     if ($res->is_success) {
         my $content = $res->decoded_content;
+        # return 0 if $streamer eq 'nyanners'; 
         if ($content =~ /"isLiveBroadcast":true/) {
             $content =~ /"description":"([^"]+)/;
             return $1;
@@ -398,8 +497,7 @@ sub getStreams {
     return @{ $streamers };
 }
 
-
-sub getMessage {
+sub getMessageID {
     my $streamer = shift;
     my $db = Component::DBI->new();
     return $db->dbh->selectrow_array("SELECT message FROM twitch WHERE streamer = ?", undef, $streamer);
@@ -451,7 +549,6 @@ sub getTag {
 
 sub setTag {
     my ($streamer, $tag) = @_;
-        print Dumper($tag);
     my $db = Component::DBI->new();
     $db->dbh->do("UPDATE twitch SET tag = ? WHERE streamer = ?", undef, $tag, $streamer);
     print Dumper($tag);
@@ -462,7 +559,6 @@ sub setTag {
 sub setT {
     my $db = Component::DBI->new();
     my @sql = reverse @_;
-    print Dumper(@sql);
     $db->dbh->do("UPDATE twitch SET ? = ? WHERE streamer = ?", undef, @sql);   
 }
 
@@ -471,27 +567,5 @@ sub getT {
     return $db->dbh->selectrow_array("SELECT tag FROM twitch WHERE streamer = ?", undef, shift);
 }
 
-sub cleanup_dead_messages {
-    my $self = shift;
-    my $discord = $self->discord;
-    my $config  = $self->{'bot'}{'config'}{'twitch'};
-    my $channel = $config->{'channel'};
-    my $timeout = 300; # Timeout in seconds (5 minutes)
-
-    my @streams = getStreams();
-
-    for my $streamer (@streams) {
-        my $laston = getLaston($streamer);
-
-        if (defined $laston && $laston > 0 && (time() - $laston) > $timeout) {
-            # Streamer has been offline for longer than the timeout period, delete message
-            my $message_id = getMessage($streamer);
-            if ($message_id) {
-                $discord->delete_message($channel, $message_id);
-                setMessage($streamer, 0); # Update database to indicate message has been deleted
-            }
-        }
-    }
-}
 
 1;
