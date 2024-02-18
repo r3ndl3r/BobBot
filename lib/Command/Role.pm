@@ -28,6 +28,7 @@ sub cmd_role {
 
     my $discord = $self->discord;
     my $pattern = $self->pattern;
+    $msg->{'guild_id'} = 880820123257172009;
     my $guild   = $discord->get_guild($msg->{'guild_id'});
 
     my $channel = $msg->{'channel_id'};
@@ -35,6 +36,17 @@ sub cmd_role {
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
 
+    if ($args =~ /^h(?:elp)?/i) {
+        my $help_message = <<EOF;
+Available commands:
+- !role list: List all roles on the server.
+- !role add <name>: Add a new role to the server.
+- !role delete <name>: Delete an existing role from the server.
+- !role assign <user> <role>: Assign a role to a user.
+EOF
+        $discord->send_message($channel, $help_message);
+    }
+    
     if ($args =~ /^l(ist)?/i) {
         my $roles = $guild->roles;
         my @roles = map { $roles->{$_}->{'name'} } keys %{ $roles };
