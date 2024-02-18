@@ -59,7 +59,7 @@ sub cmd_twitch {
     if ($arg =~ /^d(el(ete)?)?$/ and $streamer)    { delT(@cmd);  return }
     if ($arg =~ /^l(ist)?$/)                       { listT(@cmd); return }
     if ($arg =~ /^t(ag)?$/ && $streamer)           { tagT(@cmd);  return }
-    if ($args =~ /^(h(elp)?|\?)$/)                 { help(@cmd);  return}
+    if ($args =~ /^h(elp)?$/)                      { help(@cmd);  return}
     if ($args =~ /^r(efresh)?$/) {
         $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
         twitch(@_) 
