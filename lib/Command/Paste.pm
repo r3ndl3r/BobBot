@@ -46,7 +46,6 @@ sub cmd_paste {
         $sth->execute($id);
 
         my $content = $sth->fetchrow_array();
-        print Data::Dumper::Dumper(\$content);
         if ($content) {
             my $thaw = thaw($content);
             $discord->send_message($channel, $thaw);
