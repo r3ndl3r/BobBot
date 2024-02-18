@@ -248,6 +248,9 @@ sub cleanup_forecast_messages {
         my $db = Component::DBI->new();
         my $message_ids = $db->get("forecast-$city");
 
+        # Ensure message_ids is always an array reference
+        $message_ids ||= [];
+
         # Delete all messages except the most recent one
         my @sorted_ids = sort { $b <=> $a } grep { /^\d+$/ } @{$message_ids};
         for my $id (@sorted_ids[1..$#sorted_ids]) {
@@ -258,5 +261,6 @@ sub cleanup_forecast_messages {
         $db->set("forecast-$city", [ $sorted_ids[0] ]);
     }
 }
+
 
 1;
