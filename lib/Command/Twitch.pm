@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
-use Component::DBI;
 use LWP::UserAgent;
 use JSON;
 use Data::Dumper;
