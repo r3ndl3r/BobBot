@@ -51,11 +51,9 @@ sub cmd_twitch {
     my $args    = lc $msg->{'content'}; # Lowercase everything for arg parsing.
        $args    =~ s/$pattern//i;
     my @args    = split /\s+/, $args;
-    my $replyto = '<@' . $author->{'id'} . '>';
 
     my $config  = $self->{'bot'}{'config'}{'twitch'};
     
-
     my ($arg, $streamer) = @args;
     my @cmd = ($discord, $channel, $msg, $streamer, $config);
 
@@ -63,7 +61,7 @@ sub cmd_twitch {
     if ($arg =~ /^d(el(ete)?)?$/ and $streamer)    { delT(@cmd);  return }
     if ($arg =~ /^l(ist)?$/)                       { listT(@cmd); return }
     if ($arg =~ /^t(ag)?$/ && $streamer)           { tagT(@cmd);  return }
-    if ($args =~ /^h(elp)?$/)                      { help(@cmd);  return}
+    if ($args =~ /^h(elp)?$/)                      { help(@cmd);  return }
     if ($args =~ /^r(efresh)?$/) {
         $discord->delete_message($msg->{'channel_id'}, $msg->{'id'});
         twitch(@_) 
@@ -342,39 +340,39 @@ sub listT {
 
 sub tagT {
     my ($discord, $channel, $msg, $streamer) = @_;       
-    my $userid = $msg->{'author'}->{'id'}; 
+    my $userid = $msg->{'author'}->{'id'};
     my @streams = getStreams();
     my %streamers = map { $_ => 1 } @streams;
 
+    if ($streamer =~ /^l(ist)?$/) {
+        my $tags = getTags($userid);
+        if (ref $tags eq 'HASH') {
+            my @taggedStreamers = grep { grep { $_ eq $userid } @{ $tags->{$_} } } keys %$tags;
+            if (@taggedStreamers) {
+                $discord->send_message($channel, "<\@$userid> you have tagging enabled for: " . join(', ', sort @taggedStreamers));
+            } else {
+                $discord->send_message($channel, "<\@$userid> you don't have tagging enabled for anybody.");
+            }
+        }
+        return;
+    }
+
     if (exists $streamers{$streamer}) {
         my $tag = getTag($streamer);
-        my @tags;
-        if ($tag) {
-            @tags = split ',', $tag;
-        }
+        my @tags = $tag ? split ',', $tag : ();
         my %tags = map { $_ => 1 } @tags;
 
         if (exists $tags{$userid}) {
             delete $tags{$userid};
-            setTag($streamer, join ',', map { $_ } keys %tags);
+            setTag($streamer, join ',', keys %tags);
             $discord->send_message($channel, "<\@$userid> Twitch tagging removed for '**$streamer**'.");
         } else {
             push @tags, $userid;
             setTag($streamer, join ',', @tags);
-    
             $discord->send_message($channel, "<\@$userid> Twitch tagging added for '**$streamer**'.");
-
         }
-
-        return;
     } else {
         $discord->send_message($channel, "<\@$userid> '**$streamer**' is not a valid streamer.");
-    }
-
-
-    if ($streamer =~ /^l(ist)?$/) {
-        $discord->send_message($channel, "$userid you have tagging enabled for: $streamer");
-        $discord->send_message($channel, "$userid you don't have tagging enabled for anybody.");
     }
 }
 
@@ -568,6 +566,23 @@ sub setLaston {
     my $time = time;
     $db->dbh->do("UPDATE twitch SET laston = ? WHERE streamer = ?", undef, $time, $streamer);
 }
+
+
+sub getTags {
+    my ($userid) = @_;
+    my $db = Component::DBI->new();
+    my $sth = $db->dbh->prepare("SELECT streamer, tag FROM twitch");
+    $sth->execute();
+
+    my %tags;
+    while (my ($streamer, $tag) = $sth->fetchrow_array()) {
+        my @tags = $tag ? split ',', $tag : ();
+        $tags{$streamer} = \@tags;
+    }
+
+    return \%tags;
+}
+
 
 sub getTag {
     my ($streamer) = @_;
