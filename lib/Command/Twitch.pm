@@ -14,6 +14,7 @@ use Date::Parse;
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_twitch);
 
+
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
@@ -32,8 +33,12 @@ has timer_sub           => ( is => 'ro',    default => sub
     }
 );
 
+
 my $debug = 0;
 my $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3';
+
+
+sub debug { my $msg = shift; say $msg if $debug == 1 }
 
 sub cmd_twitch { 
     my ($self, $msg) = @_;
@@ -52,7 +57,7 @@ sub cmd_twitch {
     
 
     my ($arg, $streamer) = @args;
-    my @cmd = ($discord, $channel, $msg, $streamer);
+    my @cmd = ($discord, $channel, $msg, $streamer, $config);
 
     if ($arg =~ /^a(dd)?$/ && $streamer)           { addT(@cmd);  return }
     if ($arg =~ /^d(el(ete)?)?$/ and $streamer)    { delT(@cmd);  return }
@@ -79,7 +84,7 @@ sub twitch {
             my @streams = getStreams();
             for my $streamer (@streams) {
                 my $topic = getStream($streamer, $config);
-                debug("ONLINE: $streamer - $topic") if $topic;
+                debug "ONLINE: $streamer - $topic" if $topic;
 
                 if ($topic) {
                     update_or_send_message($discord, $config, $messages, $streamer, $topic);
@@ -90,6 +95,7 @@ sub twitch {
         }
     );
 }
+
 
 sub format_messages {
     my ($channelMessages) = @_;
@@ -113,6 +119,7 @@ sub format_messages {
     return \%formatted_messages;
 }
 
+
 sub update_or_send_message {
     my ($discord, $config, $messages, $streamer, $topic) = @_;
 
@@ -122,7 +129,7 @@ sub update_or_send_message {
                 my $oldmsg = shift;
 
                 if ($messages->{$streamer}{'old_topic'} && $topic ne $messages->{$streamer}{'old_topic'}) {
-                    debug("TOPIC CHANGED: $streamer - $topic");
+                    debug "TOPIC CHANGED: $streamer - $topic";
                     $oldmsg->{'embeds'}[0]{'fields'}[0]{'value'} = $topic;
                     $discord->edit_message($config->{'channel'}, $messages->{$streamer}{'id'}, $oldmsg);
                 }
@@ -135,6 +142,7 @@ sub update_or_send_message {
         sendMessage($discord, $config, $streamer, $topic);
     }
 }
+
 
 sub handle_offline_streamer {
     my ($discord, $config, $messages, $streamer) = @_;
@@ -153,11 +161,6 @@ sub handle_offline_streamer {
     }
 }
 
-
-sub debug {
-    my $msg = shift;
-    say $msg if $debug == 1;
-}
 
 sub sendMessage {
     my ($discord, $config, $streamer, $topic) = @_;
@@ -234,6 +237,7 @@ sub sendMessage {
     setLaston($streamer);    
 }
 
+
 sub addT {
     my ($discord, $channel, $msg, $streamer) = @_;
 
@@ -276,25 +280,48 @@ sub addT {
 
 
 sub delT {
-    my ($discord, $channel, $msg, $streamer) = @_;
-        
+    my ($discord, $channel, $msg, $streamer, $config) = @_;
+
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "$streamer is not valid channel.");
-        return;            
+        $discord->send_message($channel, "$streamer is not a valid channel.");
+        return;
     }
 
     my @streams = getStreams();
 
     for my $s (@streams) {
         if ($streamer eq $s) {
+            # Clean up the message associated with the streamer
+            cleanUpMessage($discord, $config, $streamer);
+
+            # Delete the streamer from the list
             delStreamer($streamer);
             $discord->send_message($channel, "Deleted $streamer from Twitch alerts list.");
-
             return;
         }
     }
 
-    $discord->send_message($channel, "$streamer is not in Twitch alerts list."); 
+    $discord->send_message($channel, "$streamer is not in the Twitch alerts list.");
+}
+
+
+sub cleanUpMessage {
+    my ($discord, $config, $streamer) = @_;
+
+    # Get the message ID associated with the streamer
+    my $message_id = getMessageID($streamer);
+
+    if ($message_id) {
+        # Delete the message from the Discord channel
+        $discord->delete_message($config->{'channel'}, $message_id);
+        
+        # Update the database to remove the message ID
+        setMessage($streamer, 0);
+
+        return 1;  # Deleted successfully
+    }
+
+    return 0;  # No message found for the streamer
 }
 
 
@@ -341,7 +368,7 @@ sub tagT {
 
         return;
     } else {
-        $discord->send_message($channel, "<\@$userid> '**$streamer**' is not a vlid streamer.");
+        $discord->send_message($channel, "<\@$userid> '**$streamer**' is not a valid streamer.");
     }
 
 
@@ -356,87 +383,115 @@ sub validChannel {
     my $streamer = shift;
     my $res = getTwitch($streamer);
 
+    debug $res->status_line;
+
     if ($res->is_success && $res->decoded_content =~ /meta property="og:type" content="video.other"/) {
         return 1;
     } else {
-
         return 0;
     }
 }
 
+
 sub getStream {
     my ($stream, $config) = @_;
-    # return 0 if $stream eq 'nyanners'; 
 
-    my $oauth = 0;
-
-    if (-e 'twitch.oauth') {
-        open my $fh, '<', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
-        chomp($oauth = <$fh>);
-        close $fh;
-    } else {
-        print "No OAuth token found. Generating a new file.\n";
-        open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
-        print $fh $oauth;
-        close $fh;
-    }
+    my $oauth_token = get_or_generate_oauth_token($config);
 
     my $url = "https://api.twitch.tv/helix/streams?user_login=$stream";
     my $ua = LWP::UserAgent->new;
 
     my $res = $ua->get($url,
         'client-id'     => $config->{'client_id'},
-        'Authorization' => "Bearer $oauth",
+        'Authorization' => "Bearer $oauth_token",
     );
 
     if ($res->is_success) {
         my $json = from_json($res->content);
         return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
-    } elsif ($res->code == 401) {
-        debug("Invalid OAuth token.");
-        # Generate a new OAuth token
-        print "Getting new OAuth token.\n";
-        my $res = $ua->post(
-            'https://id.twitch.tv/oauth2/token',
-            Content => [
-                'client_id'     => $config->{'client_id'},
-                'client_secret' => $config->{'client_secret'},
-                'grant_type'    => 'client_credentials'
-            ]
-        );
+    } else {
+        handle_error($res, $config, $stream);
+        return 0;
+    }
+}
 
-        if ($res->is_success) {
-            my $content = $res->content;
-            my ($oauth_token) = $content =~ /"access_token":"([^"]+)"/;
 
-            # Update the config with the new OAuth token
+sub get_or_generate_oauth_token {
+    my ($config) = @_;
+
+    my $oauth_token;
+
+    if (-e 'twitch.oauth') {
+        open my $fh, '<', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+        ($oauth_token = <$fh> // '');
+        close $fh;
+    } else {
+        debug "No OAuth token found. Generating a new file.";
+        open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+        close $fh;
+    }
+
+    unless ($oauth_token) {
+        $oauth_token = generate_oauth_token($config);
+        save_oauth_token($oauth_token);
+    }
+
+    return $oauth_token;
+}
+
+
+sub generate_oauth_token {
+    debug "Generating new OAuth token.";
+
+    my ($config) = @_;
+
+    my $ua = LWP::UserAgent->new;
+    my $res = $ua->post(
+        'https://id.twitch.tv/oauth2/token',
+        Content => [
+            'client_id'     => $config->{'client_id'},
+            'client_secret' => $config->{'client_secret'},
+            'grant_type'    => 'client_credentials'
+        ]
+    );
+
+    if ($res->is_success) {
+        my $content = $res->content;
+        debug "OAuth token generated successfully.";
+        return ($content =~ /"access_token":"([^"]+)"/)[0] if $content =~ /"access_token":"([^"]+)"/;
+    }
+
+    say "Failed to generate OAuth token: " . $res->status_line;
+
+    return undef;
+}
+
+
+sub save_oauth_token {
+    my ($oauth_token) = @_;
+    open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
+    print $fh $oauth_token;
+    close $fh;
+}
+
+
+sub handle_error {
+    my ($res, $config, $stream) = @_;
+
+    if ($res->code == 401) {
+        say "Invalid OAuth token.";
+
+        my $oauth_token = generate_oauth_token($config);
+        if ($oauth_token) {
             $config->{'oauth'} = $oauth_token;
+            save_oauth_token($oauth_token);
 
-            # Save the new OAuth token to file
-            open my $fh, '>', 'twitch.oauth' or die "Could not open file 'twitch.oauth' $!";
-            print $fh $oauth_token;
-            close $fh;
-
-            # Retry the request with the new OAuth token
-            my $res = $ua->get($url,
-                'client-id'     => $config->{'client_id'},
-                'Authorization' => 'Bearer ' . $config->{'oauth'},
-            );
-
-            if ($res->is_success) {
-                my $json = from_json($res->content);
-                return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
-            } else {
-                print "Failed to get OAuth token: " . $res->status_line;
-                return 0;
-            }
+            return getStream($stream, $config);
         } else {
-            print "Failed to get OAuth token: " . $res->status_line;
-            return 0;
+            say "Failed to get OAuth token: " . $res->status_line;
         }
     } else {
-        print "Failed to fetch stream data: " . $res->status_line;
-        return 0;
+        say "Failed to fetch stream data: " . $res->status_line;
     }
 }
 
@@ -484,6 +539,7 @@ sub getStreams {
 
     return @{ $streamers };
 }
+
 
 sub getMessageID {
     my $streamer = shift;
@@ -534,10 +590,12 @@ sub setT {
     $db->dbh->do("UPDATE twitch SET ? = ? WHERE streamer = ?", undef, @sql);   
 }
 
+
 sub getT {
     my $db = Component::DBI->new();
     return $db->dbh->selectrow_array("SELECT tag FROM twitch WHERE streamer = ?", undef, shift);
 }
+
 
 sub help {
     my ($discord, $channel, $msg) = @_;
