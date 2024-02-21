@@ -10,6 +10,7 @@ use LWP::UserAgent;
 use XML::Simple;
 use Date::Parse;
 use Component::DBI;
+use Data::Dumper;
 use POSIX qw(strftime);
 
 use Exporter qw(import);
@@ -58,20 +59,16 @@ has on_message => ( is => 'ro', default =>
 
 sub forecast {
     my ($self, $msg) = @_;
+    my $config = $self->{'bot'}{'config'}{'forecast'};
 
-    my %forecast = (
-        'melbourne' => {
-            'name'    => 'Melbourne (Olympic Park)',
-            'channel' => '968413731098886175',
-            'url'     => 'ftp://ftp.bom.gov.au/anon/gen/fwo/IDV10450.xml',
-        },
-
-        'bendigo'     => {
-            'name'    => 'Bendigo',
-            'channel' => '969160853825921044',
-            'url'     => 'ftp://ftp.bom.gov.au/anon/gen/fwo/IDV10706.xml',
-        },
-    );
+    my %forecast = map {
+        my ($name, $channel, $url) = split /,/, $config->{$_}, 3;
+        $_ => {
+            'name'    => $name,
+            'channel' => $channel,
+            'url'     => $url,
+        }
+    } keys %$config;
 
     %forecast = currentTemp(%forecast);
 
@@ -80,10 +77,8 @@ sub forecast {
     }
 
     $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
-
-    # Clean up old forecast messages
-    $self->cleanup_forecast_messages();
 }
+
 
 sub currentTemp {
     my %forecast = @_;
@@ -108,6 +103,7 @@ sub currentTemp {
 sub cmd_forecast {
     my ($self, $city, $forecast) = @_;
     my $discord = $self->discord;
+    my $config  = $self->{'bot'}{'config'}{'forecast'};
 
     # Weekly forecast.
     my $res = LWP::UserAgent->new->get($forecast->{'url'});
@@ -115,13 +111,10 @@ sub cmd_forecast {
 
     my (@forecasts, @conditions);
 
-    if ($city eq 'melbourne') {
-
+    if (exists $xml->{forecast}{area}[2]{'forecast-period'}) {
         @forecasts  = @{ $xml->{forecast}{area}[2]{'forecast-period'} };
         @conditions = @{ $xml->{forecast}{area}[1]{'forecast-period'} };
-
-    } elsif ($city eq 'bendigo') {
-
+    } else {
         @forecasts = @{ $xml->{forecast}{area}[1]{'forecast-period'} };
     }
 
@@ -186,38 +179,38 @@ sub cmd_forecast {
 
     $content = substr( $content, 0, 2000 );
 
-    $discord->send_message($forecast->{'channel'}, 
-        {
-            'content' => $content,
-            'components' => [
+    $self->discord->get_channel_messages($forecast->{'channel'},
+        sub {
+            my $channelMessages = shift;
+
+            my @messages = map { $_->{'id'} } grep { $_->{'id'} }  @{ $channelMessages };
+            for my $id (@messages) {
+                $discord->delete_message($forecast->{'channel'}, $id);
+
+            }
+            $discord->send_message($forecast->{'channel'}, 
                 {
-                    'type' => 1,
+                    'content' => $content,
                     'components' => [
                         {
-                            'style'     => 1,
-                            'label'     => 'UPDATE NOW',
-                            'custom_id' => 'update.weather',
-                            'disabled'  => 'false',
-                            'type'      => 2
-                        },
-                    ]
+                            'type' => 1,
+                            'components' => [
+                                {
+                                    'style'     => 1,
+                                    'label'     => 'UPDATE NOW',
+                                    'custom_id' => 'update.weather',
+                                    'disabled'  => 'false',
+                                    'type'      => 2
+                                },
+                            ]
+                        }
+                    ],
                 }
-            ],
-        },
-        sub {
-            my $id  = shift->{'id'};
-            my $db  = Component::DBI->new();
-
-            if (defined $db->get("forecast-$city")) {
-                my $old = ${ $db->get("forecast-$city") };
-            
-                $discord->delete_message($forecast->{'channel'}, $old) if $old && $old =~ /^\d+$/;
-            }
-
-            $db->set("forecast-$city", \$id);
+            );
         }
     );
 }
+
 
 sub icon {
     my $code = shift;
@@ -234,32 +227,6 @@ sub icon {
     );
 
     return exists $codes{$code} ? ":$codes{$code}:" : ":SHRUGGERS:";
-}
-
-sub cleanup_forecast_messages {
-    my $self = shift;
-    my $discord = $self->discord;
-    my %forecast = (
-        'melbourne' => '968413731098886175',
-        'bendigo'   => '969160853825921044',
-    );
-
-    for my $city (keys %forecast) {
-        my $db = Component::DBI->new();
-        my $message_ids = $db->get("forecast-$city");
-
-        # Ensure message_ids is always an array reference
-        $message_ids ||= [];
-
-        # Delete all messages except the most recent one
-        my @sorted_ids = sort { $b <=> $a } grep { /^\d+$/ } @{$message_ids};
-        for my $id (@sorted_ids[1..$#sorted_ids]) {
-            $discord->delete_message($forecast{$city}, $id);
-        }
-
-        # Update database to keep only the most recent message
-        $db->set("forecast-$city", [ $sorted_ids[0] ]);
-    }
 }
 
 
