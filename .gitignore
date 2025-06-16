@@ -7,3 +7,7 @@ config.ini
 report
 lib/Command/images
 Catch.pm
+lib/Command/Forecast.pm.bak
+lib/Command/Twitch.pm.bak
+.gitignore
+twitch.oauth

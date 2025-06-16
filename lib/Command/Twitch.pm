@@ -122,6 +122,7 @@ sub update_or_send_message {
     my ($discord, $config, $messages, $streamer, $topic) = @_;
 
     if ($messages->{$streamer}{'id'}) {
+        #print "DEBUG 1: $streamer\n";
         $discord->get_message($config->{'channel'}, $messages->{$streamer}{'id'},
             sub {
                 my $oldmsg = shift;
@@ -144,16 +145,15 @@ sub update_or_send_message {
 
 sub handle_offline_streamer {
     my ($discord, $config, $messages, $streamer) = @_;
+    if ($messages->{$streamer}{'id'}) {  # Check if there is a message ID for the streamer
+        my $id = getMessageID($streamer);
+        return if !$id;
 
-    if ($messages->{$streamer}{'id'}) {
         my $message = $discord->get_message($config->{'channel'}, getMessageID($streamer),
             sub {
                 my $message = shift;
-                my $last_update = str2time($message->{'embeds'}[0]{'fields'}[2]{'value'});
-                if (defined $last_update && $last_update > 0 && (time() - $last_update) > 180) {
-                    $discord->delete_message($config->{'channel'}, $messages->{$streamer}{'id'});
-                    setMessage($streamer, 0);
-                }
+                $discord->delete_message($config->{'channel'}, $messages->{$streamer}{'id'});  # Delete the message
+                setMessage($streamer, 0);  # Reset the message ID for the streamer
             }
         );
     }
