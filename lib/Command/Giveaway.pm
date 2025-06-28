@@ -45,20 +45,32 @@ sub cmd_giveaway {
     my ($command) = split /\s+/, $args;
 
     if ($command eq 'on') {
-        $self->giveaway_on($channel, $author_id);
+        if ($args =~ /(\d+)$/ && $self->{access}) {
+            $self->giveaway_on($channel, $1);
+        } else {
+            $self->giveaway_on($channel, $author_id);
+        }
+
         $discord->create_reaction($channel, $message_id, "🤖");
         return;
     }
+
     if ($command eq 'off') {
-        $self->giveaway_off($channel, $author_id);
+        if ($args =~ /(\d+)$/ && $self->{access}) {
+            $self->giveaway_on($channel, $1);
+        } else {
+            $self->giveaway_on($channel, $author_id);
+        }
         $discord->create_reaction($channel, $message_id, "🤖");
         return;
     }
+
     if ($command eq 'list') {
         $self->giveaway_list($channel);
         $discord->create_reaction($channel, $message_id, "🤖");
         return;
     }
+
     if ($command eq 'update') {
         $self->giveaway;
         $discord->create_reaction($channel, $message_id, "🤖");
@@ -163,9 +175,14 @@ sub giveaway {
 
         $discord->send_message($channel, $embed);
 
-        # Send to all tagged users
-        for my $user_id (keys %$tags) {
-            $discord->send_dm($user_id, $embed);
+        if ($tags) {
+            # Send to all tagged users
+            for my $user_id (keys %$tags) {
+                $discord->send_dm($user_id, $embed);
+            }
+
+            my @tags = map { '<@' . $_ . '>' } keys %$tags;
+            push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags }; 
         }
     }
 }
