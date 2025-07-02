@@ -61,6 +61,22 @@ sub set {
 }
 
 
+sub del {
+    my ($self, $key, $data) = @_;
+    my $dbh = $self->{'dbh'};
+
+    # Check to see if storage key exists first.
+    if (ifExist($self, $key)) {
+        my $sql = "DELETE FROM storage WHERE name = ?";
+        my $sth = $dbh->prepare($sql);
+
+        return $sth->execute(freeze($data), $key) ? 1 : undef;
+    } else {
+        return undef;
+    }
+}
+
+
 sub ifExist {
     my ($self, $key) = @_;
     my $dbh = $self->{'dbh'};
