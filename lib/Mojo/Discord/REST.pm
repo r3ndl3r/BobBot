@@ -781,6 +781,10 @@ sub send_dm
 
         $self->log->debug('[REST.pm] [send_dm] Sending DM to user ID ' . $user . ' in DM ID ' . $dm);
 
+        unless ($dm) {
+            print "DEBUG: [REST.pm] [send_dm] Sending DM to ID: $user, message: $message\n";
+        };
+
         $self->send_message($dm, $message, $callback);
     });
 }
