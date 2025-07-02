@@ -7,6 +7,7 @@ use strictures 2;
 use namespace::clean;
 
 use Component::DBI;
+use Data::Dumper;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_storage);
@@ -18,7 +19,7 @@ has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has name                => ( is => 'ro', default => 'Storage' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Storage' );
-has pattern             => ( is => 'ro', default => '^storage ?' );
+has pattern             => ( is => 'ro', default => '^(storage|store) ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_storage } );
 has usage               => ( is => 'ro', default => <<EOF
 Storage
@@ -46,13 +47,14 @@ sub cmd_storage {
         return;
     }
     
-    if ($args =~ /^show\s+(\S+)/i) {
+    if ($args =~ /^s(?:how)?\s+(\S+)/i) {
         if (! $db->get($1) ) {
             $discord->send_message($channel, "Storage: '$1' does not exist.");
             return;
         }
 
-        print Data::Dumper::Dumper(\$db->get($1));
+        $discord->send_message($channel, Dumper \$db->get($1) );
+        print Dumper \$db->get($1);
     }    
 }
 
