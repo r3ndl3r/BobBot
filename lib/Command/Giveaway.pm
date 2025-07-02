@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use XML::Simple;
 use LWP::UserAgent;
-use Component::DBI;
 use HTML::TreeBuilder;
 use HTML::FormatText;
 use Component::DBI;
@@ -18,7 +17,7 @@ has discord             => ( is => 'lazy', builder => sub { shift->bot->discord 
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 
 has name                => ( is => 'ro', default => 'giveaway' );
-has access              => ( is => 'ro', default => 1 );
+has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Free game giveaways' );
 has pattern             => ( is => 'ro', default => '^g(iveaway)? ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_giveaway } );
@@ -36,9 +35,6 @@ sub cmd_giveaway {
 
     my $discord = $self->discord;
     my $pattern = $self->pattern;
-    my $channel = $msg->{'channel_id'};
-    my $author_id = $msg->{'author'}{'id'};
-    my $message_id = $msg->{'id'};
 
     my $args = lc $msg->{'content'};
     $args =~ s/$pattern//i;
@@ -46,66 +42,67 @@ sub cmd_giveaway {
 
     if ($command eq 'on') {
         if ($args =~ /(\d+)$/ && $self->{access}) {
-            $self->giveaway_on($channel, $1);
+            giveaway_on($discord, $msg, $1);
         } else {
-            $self->giveaway_on($channel, $author_id);
+            giveaway_on($discord, $msg, $msg->{'author'}{'id'});
         }
 
-        $discord->create_reaction($channel, $message_id, "🤖");
+        react_robot($discord, $msg);
         return;
     }
 
     if ($command eq 'off') {
         if ($args =~ /(\d+)$/ && $self->{access}) {
-            $self->giveaway_on($channel, $1);
+            giveaway_off($discord, $msg, $1);
         } else {
-            $self->giveaway_on($channel, $author_id);
+            giveaway_off($discord, $msg, $msg->{'author'}{'id'});
         }
-        $discord->create_reaction($channel, $message_id, "🤖");
+        react_robot($discord, $msg);
         return;
     }
 
-    if ($command eq 'list') {
-        $self->giveaway_list($channel);
-        $discord->create_reaction($channel, $message_id, "🤖");
+
+    if ($command =~ /^l(ist)?$/) {
+        giveaway_list($discord, $msg);
+        react_robot($discord, $msg);
         return;
     }
 
-    if ($command eq 'update') {
-        $self->giveaway;
-        $discord->create_reaction($channel, $message_id, "🤖");
+    if ($command =~ /^u(pdate)?$/) {
+        giveaway(@_);
+        react_robot($discord, $msg);
         return;
     }
 
-    $discord->send_message($channel, "Usage: `!giveaway on | off | list | update`");
+    $discord->send_message($msg->{'channel_id'}, "Usage: `!giveaway on | off | list | update`");
 }
 
 
 sub giveaway_on {
-    my ($self, $channel, $user_id) = @_;
+    my ($discord, $msg, $user_id) = @_;
 
     my $db = Component::DBI->new();
     my $tags = $db->get('giveaway') || {};
     $tags->{$user_id} = 1;
     $db->set('giveaway', $tags);
 
-    $self->discord->send_message($channel, "🎉 Giveaway tag enabled.");
+    $discord->send_message($msg->{'channel_id'}, "🎉 Giveaway tag enabled.");
 }
 
 sub giveaway_off {
-    my ($self, $channel, $user_id) = @_;
+    my ($discord, $msg, $user_id) = @_;
 
     my $db = Component::DBI->new();
     my $tags = $db->get('giveaway') || {};
     delete $tags->{$user_id};
     $db->set('giveaway', $tags);
 
-    $self->discord->send_message($channel, "🔕 Giveaway tag disabled.");
+    $discord->send_message($msg->{'channel_id'}, "🎉 Giveaway tag disabled.");
 }
 
 
 sub giveaway_list {
-    my ($self, $channel) = @_;
+    my ($discord, $msg) = @_;
 
     my $tags = Component::DBI->new()->get('giveaway') || {};
 
@@ -113,8 +110,7 @@ sub giveaway_list {
         ? "🎯 Tagged users: " . join(', ', map { "<\@$_>" } keys %$tags)
         : "⚠️ No users have the giveaway tag enabled.";
 
-    #$discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
-    $self->discord->send_message($channel, $reply);
+    $discord->send_message($msg->{'channel_id'}, $reply);
 }
 
 
@@ -168,12 +164,10 @@ sub giveaway {
             ]
         };
 
-        $html->delete;  # Clean up to prevent leaks
+        $html->delete;
 
         my $insert = $dbh->prepare("INSERT INTO giveaway (link) VALUES(?)");
         $insert->execute($item->{'link'});
-
-        $discord->send_message($channel, $embed);
 
         if ($tags) {
             # Send to all tagged users
@@ -184,7 +178,13 @@ sub giveaway {
             my @tags = map { '<@' . $_ . '>' } keys %$tags;
             push @{ $embed->{'embeds'}[0]{'fields'} }, { 'name'  => 'Alerting:', 'value' => join ' ', @tags }; 
         }
+
+        $discord->send_message($channel, $embed);
     }
 }
+
+
+sub react_robot { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖") }
+
 
 1;
