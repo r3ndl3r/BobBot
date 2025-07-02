@@ -6,8 +6,6 @@ use Moo;
 use strictures 2;
 use XML::Simple;
 use LWP::UserAgent;
-use HTML::TreeBuilder;
-use HTML::FormatText;
 use Component::DBI;
 
 use namespace::clean;
@@ -22,7 +20,7 @@ has description         => ( is => 'ro', default => 'Free game giveaways' );
 has pattern             => ( is => 'ro', default => '^g(iveaway)? ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_giveaway } );
 has usage               => ( is => 'ro', default => 'Usage: `!giveaway on | off | list | update`' );
-has timer_seconds       => ( is => 'ro', default => 600 );
+has timer_seconds       => ( is => 'ro', default => 6000 );
 
 has timer_sub => ( is => 'ro', default => sub {
     my $self = shift;
@@ -127,44 +125,41 @@ sub giveaway {
     my $res = $ua->get($config->{'url'});
     return unless $res->is_success;
 
-    my $xml = XMLin($res->content);
-    my @items = @{ $xml->{'channel'}{'item'} };
+    my $xs = XML::Simple->new(
+        ForceArray => ['item', 'media:content'],
+        KeyAttr => []
+    );
+    my $data = $xs->XMLin($res->content);
 
     my $db  = Component::DBI->new();
     my $dbh = $db->{'dbh'};
 
     my $tags = $db->get('giveaway') || {};
 
-    for my $item (@items) {
+   for my $item (@ { $data->{channel}{item} }) {
         my $sth = $dbh->prepare("SELECT link FROM giveaway WHERE link = ?");
         $sth->execute($item->{'link'});
 
         # Skip if link already exists
         next if $sth->fetchrow_array();
 
-        my $html = HTML::TreeBuilder->new();
-        $html->parse($item->{'description'});
-
-        my $formatter = HTML::FormatText->new(leftmargin => 0, rightmargin => 500);
-
+        my $url = getURL($item->{'link'});
         my $embed = {
             'embeds' => [
                 {
                     'author' => {
                         'url'      => 'https://www.gamerpower.com/',
-                        'icon_url' => 'https://www.gamerpower.com/assets/images/logo.png',
+                        'icon_url' => $item->{'media:content'}[0]{'url'},
                     },
                     'title'       => $item->{'title'},
-                    'description' => $formatter->format($html),
-                    'url'         => $item->{'link'},
+                    'description' => $item->{'description'},
+                    'url'         => $url,
                     'thumbnail'   => {
-                        'url' => $item->{'enclosure'}{'url'} || '',
+                        'url' => $item->{'media:content'}[0]{'url'},
                     },
                 }
             ]
         };
-
-        $html->delete;
 
         my $insert = $dbh->prepare("INSERT INTO giveaway (link) VALUES(?)");
         $insert->execute($item->{'link'});
@@ -183,6 +178,21 @@ sub giveaway {
     }
 }
 
+
+sub getURL {
+    my $url      = shift;
+    my $original = $url;
+       $url      =~ s#https://www.gamerpower.com/#https://www.gamerpower.com/open/#;
+    
+    my $ua  = LWP::UserAgent->new(agent => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3');
+    my $res = $ua->get($url);
+
+    if ($res->is_success && $res->content =~ /<link rel="canonical" href="([^"]+)/) {
+        return $1;
+    } else {
+        return $original;
+    }
+}
 
 sub react_robot { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖") }
 
