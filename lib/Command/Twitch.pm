@@ -209,7 +209,7 @@ sub add_streamer {
     my ($discord, $channel, $msg, $streamer) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "$streamer is not valid channel.");
+        $discord->send_message($channel, "'**$streamer**' is not valid channel.");
         return;            
     }
 
@@ -219,7 +219,7 @@ sub add_streamer {
     # Check to see if stream already exists.
     for my $s (@streams) {
         if ($streamer eq $s) {
-            $discord->send_message($channel, "$streamer is already in Twitch alerts list.");
+            $discord->send_message($channel, "Streamer '**$streamer**' is already in Twitch alerts list.");
             react_robot($discord, $msg);
             return;
         }
@@ -227,7 +227,7 @@ sub add_streamer {
 
     # Make sure the streamer is valid.
     unless ( validChannel($streamer) ) {
-        $discord->send_message($channel, "$streamer is not valid streamer.");
+        $discord->send_message($channel, "Streamer '**$streamer**' is not valid.");
         react_robot($discord, $msg);
         return;
     }
@@ -235,7 +235,7 @@ sub add_streamer {
     $twitch->{$streamer} = {};
     twitchSet($twitch);
 
-    $discord->send_message($channel, "Added $streamer to Twitch alerts list.");
+    $discord->send_message($channel, "Added '**$streamer**' to Twitch alerts list.");
     react_robot($discord, $msg);
 }
 
@@ -244,7 +244,7 @@ sub del_streamer {
     my ($discord, $channel, $msg, $streamer, $config) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "$streamer is not a valid channel.");
+        $discord->send_message($channel, "Streamer '**$streamer**' is not valid.");
         return;
     }
 
@@ -261,14 +261,14 @@ sub del_streamer {
             # Delete the streamer from the list
             delete $twitch->{$streamer};
             twitchSet($twitch);
-            $discord->send_message($channel, "Deleted $streamer from Twitch alerts list.");
+            $discord->send_message($channel, "Deleted '**$streamer**' from Twitch alerts list.");
             react_robot($discord, $msg);
 
             return;
         }
     }
 
-    $discord->send_message($channel, "$streamer is not in the Twitch alerts list.");
+    $discord->send_message($channel, "Streamer '**$streamer**' is not in the Twitch alerts list.");
 }
 
 
