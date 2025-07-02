@@ -37,6 +37,7 @@ sub cmd_eval {
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
     my $replyto = '<@' . $author->{'id'} . '>';
+    my $db      = Component::DBI->new();
     
     $discord->send_message($channel, eval $args);
     $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
