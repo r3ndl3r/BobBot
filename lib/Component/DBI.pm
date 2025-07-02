@@ -7,7 +7,7 @@ use DBI;
 
 use Exporter qw(import);
 
-our @EXPORT = qw( get set );
+our @EXPORT = qw( get set del );
 
 
 sub new {
