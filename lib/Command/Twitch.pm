@@ -368,42 +368,48 @@ sub getStream {
 sub get_or_generate_oauth_token {
     my ($config) = @_;
 
-    my $oauth_token = '';
-
-    # Read existing token if available
-    if (-e 'twitch.oauth') {
-        if (open my $fh, '<', 'twitch.oauth') {
-            chomp($oauth_token = <$fh>);
-            close $fh;
-        } else {
-            warn "Could not open twitch.oauth for reading: $!";
-        }
-    }
+    my $db = Component::DBI->new();
+    my $token = ${ $db->get('twitch.oauth') } || undef;
 
     # Generate new token if missing or empty
-    unless ($oauth_token) {
+    unless ($token) {
         debug "No valid OAuth token found, generating new one.";
-        $oauth_token = generate_oauth_token($config);
-        if ($oauth_token) {
-            save_oauth_token($oauth_token);
+        $token = generate_oauth_token($config);
+        if ($token) {
+            $db->set('twitch.oauth', \$token);
         } else {
             warn "Failed to generate OAuth token.";
         }
     }
 
-    return $oauth_token;
+    return $token;
 }
 
 
-sub save_oauth_token {
-    my ($oauth_token) = @_;
-    if (open my $fh, '>', 'twitch.oauth') {
-        print $fh $oauth_token;
-        close $fh;
-        debug "Saved OAuth token to twitch.oauth.";
-    } else {
-        warn "Could not open twitch.oauth for writing: $!";
+sub generate_oauth_token {
+    debug "Generating new OAuth token.";
+
+    my ($config) = @_;
+
+    my $ua = LWP::UserAgent->new;
+    my $res = $ua->post(
+        'https://id.twitch.tv/oauth2/token',
+        Content => [
+            'client_id'     => $config->{'client_id'},
+            'client_secret' => $config->{'client_secret'},
+            'grant_type'    => 'client_credentials'
+        ]
+    );
+
+    if ($res->is_success) {
+        my $content = $res->content;
+        debug "OAuth token generated successfully.";
+        return ($content =~ /"access_token":"([^"]+)"/)[0] if $content =~ /"access_token":"([^"]+)"/;
     }
+
+    say "Failed to generate OAuth token: " . $res->status_line;
+
+    return undef;
 }
 
 
