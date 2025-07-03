@@ -25,6 +25,10 @@ say localtime(time) . " Loaded Config: $config_file";
 my $bot = Bot::Bobbot->new('config' => $config);
 
 find(sub {
+    if (-d $_ && $_ eq 'old') {
+        $File::Find::prune = 1; # Tells File::Find to skip this directory
+        return;
+    }
     return unless /\.pm$/;
     require "$File::Find::dir/$_";
 
