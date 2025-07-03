@@ -24,8 +24,8 @@ has usage               => ( is => 'ro', default => '!delete [ids]' );
 has timer_sub => ( is => 'ro', default =>
     sub { 
         my $self = shift;
-        # This timer processes one message every 2 seconds.
-        Mojo::IOLoop->recurring( 2 =>
+        # This timer processes one message every 3 seconds.
+        Mojo::IOLoop->recurring( 3 =>
             sub {
                 my $db = Component::DBI->new();
                 my $deletion_queue = $db->get('del.all') || {};
@@ -56,29 +56,6 @@ has timer_sub => ( is => 'ro', default =>
 );
 
 
-has on_message => ( is => 'ro', default =>
-    sub {
-        my $self   = shift;
-        my $config = $self->{'bot'}{'config'}{'oz'};
-        
-        $self->discord->gw->on('INTERACTION_CREATE' =>     
-            sub {
-                my ($gw, $msg) = @_;
-                
-                my $id    = $msg->{'id'};
-                my $token = $msg->{'token'};
-                my $data  = $msg->{'data'};
-
-                if ($data->{'custom_id'} eq 'delete.all' && $msg->{'channel_id'} eq $config->{'channel'}) {
-                    $msg->{'content'} = 'all';
-                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, "DELETING PLEASE WAIT...", sub { cmd_del($self, $msg) });
-                }    
-            }
-        )
-    }
-);
-
-
 sub cmd_del {
     my ($self, $msg) = @_;
 
@@ -91,11 +68,6 @@ sub cmd_del {
     my $command_channel_id = $msg->{'channel_id'};
     # This will hold the channel ID for bulk delete operations.
     my $target_channel_id;
-
-    #================================#
-    # 1. PARSE USER ARGUMENTS
-    # Determines which action the user wants to perform.
-    #================================#
 
     # !del all stop
     if ($args eq 'all stop') {
