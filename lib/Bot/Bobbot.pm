@@ -4,6 +4,7 @@ use feature 'say';
 use Moo;
 use strictures 2;
 
+use utf8;
 use Data::Dumper;
 use Mojo::Discord;
 use Mojo::IOLoop;
@@ -419,6 +420,19 @@ sub has_webhook
     }
     return undef;
 }
+
+
+sub react_robot {
+    my ($self, $channel_id, $message_id) = @_;
+    $self->discord->create_reaction($channel_id, $message_id, "🤖");
+}
+
+
+sub react_error {
+    my ($self, $channel_id, $message_id) = @_;
+    $self->discord->create_reaction($channel_id, $message_id, "🛑");
+}
+
 
 __PACKAGE__->meta->make_immutable;
 
