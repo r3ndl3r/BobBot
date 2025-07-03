@@ -376,47 +376,68 @@ sub delete_guild_role {
     }    
 }
 
+
+# In lib/Mojo/Discord/REST.pm
 sub interaction_response {
-    my ($self, $id, $token, $customid, $label, $callback) = @_;
+    my ($self, $id, $token, $payload, $callback) = @_;
 
     my $route = "POST /interactions/$id/$token/callback";
-
-    my $json = {
-        'type' => 7,
-        'data' => {
-            'components' => [
-                {
-                    'type' => 1,
-                    'components' => [
-                        {
-                            'style'     => 1,
-                            'label'     => $label,
-                            'custom_id' => $customid,
-                            'disabled'  => 'false',
-                            'type'      => 2
-                        },
-                    ]
-                }
-            ],
-        },
-    };
+    my $post_url = $self->base_url . "/interactions/$id/$token/callback";
 
     if ( my $delay = $self->_rate_limited($route) ) {
         $self->log->warn('[REST.pm] [interaction_response] Route is rate limited. Trying again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $customid, $callback) });
+        Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $payload, $callback) });
     } else {
-        my $post_url = $self->base_url . "/interactions/$id/$token/callback";
-
-        $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+        $self->ua->post($post_url => {Accept => '*/*'} => json => $payload => sub {
             my ($ua, $tx) = @_;
-
             my $headers = $tx->res->headers;
             $self->_set_route_rate_limits($route, $headers);
-            
             $callback->($tx->res->json) if defined $callback;
         });
     }
 }
+
+# sub interaction_response {
+#     my ($self, $id, $token, $customid, $label, $callback) = @_;
+
+#     my $route = "POST /interactions/$id/$token/callback";
+
+#     my $json = {
+#         'type' => 7,
+#         'data' => {
+#             'components' => [
+#                 {
+#                     'type' => 1,
+#                     'components' => [
+#                         {
+#                             'style'     => 1,
+#                             'label'     => $label,
+#                             'custom_id' => $customid,
+#                             'disabled'  => 'false',
+#                             'type'      => 2
+#                         },
+#                     ]
+#                 }
+#             ],
+#         },
+#     };
+
+#     if ( my $delay = $self->_rate_limited($route) ) {
+#         $self->log->warn('[REST.pm] [interaction_response] Route is rate limited. Trying again in ' . $delay . ' seconds');
+#         Mojo::IOLoop->timer($delay => sub { $self->interaction_response($id, $token, $customid, $callback) });
+#     } else {
+#         my $post_url = $self->base_url . "/interactions/$id/$token/callback";
+
+#         $self->ua->post($post_url => {Accept => '*/*'} => json => $json => sub {
+#             my ($ua, $tx) = @_;
+
+#             my $headers = $tx->res->headers;
+#             $self->_set_route_rate_limits($route, $headers);
+            
+#             $callback->($tx->res->json) if defined $callback;
+#         });
+#     }
+# }
 
 sub get_message {
     my ($self, $channel, $message, $callback) = @_;
