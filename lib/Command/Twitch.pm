@@ -34,7 +34,7 @@ has timer_sub           => ( is => 'ro',    default => sub
 );
 
 
-my $debug = 1;
+my $debug = 0;
 my $agent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3';
 
 
@@ -74,7 +74,7 @@ sub cmd_twitch {
     my ($arg, $streamer) = @args;
     my @cmd = ($discord, $channel, $msg, $streamer, $config);
 
-    if ($arg =~ /^a(dd)?$/ && $streamer)           { add_streamer(@cmd);  return }
+    if ($arg =~ /^a(dd)?$/ && $streamer)           { add_streamer($self, @cmd);  return }
     if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { del_streamer(@cmd);  return }
     if ($arg =~ /^l(ist)?$/)                       { list_streamers(@cmd); return }
     if ($arg =~ /^t(ag)?$/ && $streamer)           { tag(@cmd);  return }
@@ -206,7 +206,7 @@ sub send_message {
 
 
 sub add_streamer {
-    my ($discord, $channel, $msg, $streamer) = @_;
+    my ($self, $discord, $channel, $msg, $streamer) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
         $discord->send_message($channel, "'**$streamer**' is not valid channel.");
@@ -225,9 +225,8 @@ sub add_streamer {
         }
     }
 
-    # Make sure the streamer is valid.
-    unless ( validChannel($streamer) ) {
-        $discord->send_message($channel, "Streamer '**$streamer**' is not valid.");
+    unless ( validChannel($self, $streamer) ) {
+        $discord->send_message($channel, "Streamer '**$streamer**' is not a valid Twitch channel.");
         react_robot($discord, $msg);
         return;
     }
@@ -329,16 +328,36 @@ sub tag {
 }
 
 
+# Checks if a channel exists by using the official Twitch API.
 sub validChannel {
-    my $streamer = shift;
-    my $res = getTwitch($streamer);
+    my ($self, $streamer) = @_;
 
-    debug $res->status_line;
-    if ($res->is_success && $res->decoded_content =~ /(meta property="og:type" content="video.other"|content="video.other" property="og:type)/) {
-        return 1;
+    # Get the necessary config and authentication token.
+    my $config = $self->bot->config->{twitch};
+    my $oauth_token = get_or_generate_oauth_token($config);
+
+    my $url = "https://api.twitch.tv/helix/users?login=$streamer";
+    my $ua = LWP::UserAgent->new;
+
+    # Make the API call with the required authentication headers.
+    my $res = $ua->get($url,
+        'client-id'     => $config->{client_id},
+        'Authorization' => "Bearer $oauth_token",
+    );
+
+    if ($res->is_success) {
+        my $json = from_json($res->content);
+        # The 'data' array will contain a user object if the user is valid.
+        # If the user does not exist, the array will be empty.
+        if (ref $json->{data} eq 'ARRAY' && @{ $json->{data} }) {
+            return 1; # User is valid
+        }
     } else {
-        return 0;
+        # Pass the response to the existing error handler.
+        handle_error($res, $config, $streamer);
     }
+    
+    return 0; # User is not valid or an error occurred
 }
 
 
@@ -422,8 +441,8 @@ sub handle_error {
         my $oauth_token = generate_oauth_token($config);
         if ($oauth_token) {
             $config->{'oauth'} = $oauth_token;
-            save_oauth_token($oauth_token);
-
+            # The get_or_generate_oauth_token function will handle saving the new token
+            # on the next run, so this function only needs to retry the API call.
             return getStream($stream, $config);
         } else {
             say "Failed to get OAuth token: " . $res->status_line;
