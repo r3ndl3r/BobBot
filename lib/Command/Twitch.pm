@@ -75,9 +75,9 @@ sub cmd_twitch {
     my @cmd = ($discord, $channel, $msg, $streamer, $config);
 
     if ($arg =~ /^a(dd)?$/ && $streamer)           { add_streamer($self, @cmd);  return }
-    if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { del_streamer(@cmd);  return }
-    if ($arg =~ /^l(ist)?$/)                       { list_streamers(@cmd); return }
-    if ($arg =~ /^t(ag)?$/ && $streamer)           { tag(@cmd);  return }
+    if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { del_streamer($self, @cmd);  return }
+    if ($arg =~ /^l(ist)?$/)                       { list_streamers($self, @cmd); return }
+    if ($arg =~ /^t(ag)?$/ && $streamer)           { tag($self, @cmd);  return }
     if ($args =~ /^h(elp)?$/)                      { help(@cmd);  return }
     if ($args =~ /^r(efresh)?$/)                   { $discord->delete_message($msg->{'channel_id'}, $msg->{'id'}); twitch(@_) }
 }
@@ -220,14 +220,14 @@ sub add_streamer {
     for my $s (@streams) {
         if ($streamer eq $s) {
             $discord->send_message($channel, "Streamer `$streamer` is already in Twitch alerts list.");
-            react_error($discord, $msg);
+            $self->bot->react_error($channel, $msg->{'id'});
             return;
         }
     }
 
     unless ( validChannel($self, $streamer) ) {
         $discord->send_message($channel, "Streamer `$streamer` is not a valid.");
-        react_error($discord, $msg);
+        $self->bot->react_error($channel, $msg->{'id'});
         return;
     }
 
@@ -235,16 +235,16 @@ sub add_streamer {
     twitchSet($twitch);
 
     $discord->send_message($channel, "Added `$streamer` to Twitch alerts list.");
-    react_robot($discord, $msg);
+    $self->bot->react_robot($channel, $msg->{'id'});
 }
 
 
 sub del_streamer {
-    my ($discord, $channel, $msg, $streamer, $config) = @_;
+    my ($self, $discord, $channel, $msg, $streamer, $config) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
         $discord->send_message($channel, "Streamer `$streamer` is not valid.");
-        react_error($discord, $msg);
+        $self->bot->react_error($channel, $msg->{'id'});
         return;
     }
 
@@ -262,19 +262,19 @@ sub del_streamer {
             delete $twitch->{$streamer};
             twitchSet($twitch);
             $discord->send_message($channel, "Deleted `$streamer` from alerts list.");
-            react_robot($discord, $msg);
+            $self->bot->react_robot($channel, $msg->{'id'});
 
             return;
         }
     }
 
     $discord->send_message($channel, "Streamer `$streamer` is not in the alerts list.");
-    react_error($discord, $msg);
+    $self->bot->react_error($channel, $msg->{'id'});
 }
 
 
 sub list_streamers {
-    my ($discord, $channel, $msg) = @_;
+    my ($self, $discord, $channel, $msg) = @_;
     my $twitch  = twitchGet();
     my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
 
@@ -284,12 +284,12 @@ sub list_streamers {
     }
 
     $discord->send_message($channel, "Twitch alerts enabled for: " . join(', ', map { "`$_`" } sort @streams));
-    react_robot($discord, $msg);
+    $self->bot->react_robot($channel, $msg->{'id'});
 }
 
 
 sub tag {
-    my ($discord, $channel, $msg, $streamer) = @_;       
+    my ($self, $discord, $channel, $msg, $streamer) = @_;       
     my $uID       = $msg->{'author'}->{'id'};
     my $twitch    = twitchGet();
     my @streams   = ref $twitch eq 'HASH' ? keys %$twitch : ();
@@ -310,7 +310,7 @@ sub tag {
             $discord->send_message($channel, "<\@$uID> you don't have tagging enabled for anybody.");
         }
         
-        react_robot($discord, $msg);
+        $self->bot->react_robot($channel, $msg->{'id'});
         return;
     }
 
@@ -324,10 +324,10 @@ sub tag {
             $discord->send_message($channel, "<\@$uID> Twitch tagging added for `$streamer`.");
             twitchSet($twitch);
         }
-        react_robot($discord, $msg);
+        $self->bot->react_robot($channel, $msg->{'id'});
     } else {
         $discord->send_message($channel, "<\@$uID> `$streamer` is not a valid streamer.");
-        react_error($discord, $msg);
+        $self->bot->react_error($channel, $msg->{'id'});
     }
 }
 
@@ -491,10 +491,6 @@ sub help {
     my $help_message = $usage . $info;
     $discord->send_message($channel, $help_message);
 }
-
-
-sub react_robot { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖") }
-sub react_error { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑") }
 
 
 1;
