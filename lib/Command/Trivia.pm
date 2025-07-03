@@ -11,6 +11,7 @@ use List::Util qw(shuffle);
 use HTML::Entities qw(decode_entities);
 use Mojo::Promise;
 use Mojo::IOLoop;
+use URI::Escape; # For escaping category names in URLs
 
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
@@ -18,14 +19,17 @@ has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has name                => ( is => 'ro', default => 'Trivia' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Starts a trivia game.' );
-has usage               => ( is => 'ro', default => 'Usage: !trivia <start|stop|top>' );
+has usage               => ( is => 'ro', default => 'Usage: !trivia <start [category]|stop|top|category list>' ); # Updated usage
 has pattern             => ( is => 'ro', default => sub { qr/^trivia\b/i } );
 has function            => ( is => 'ro', default => sub { \&cmd_trivia } );
 
 # In-memory hash to track if a channel is currently fetching a question
-my %is_fetching_question; 
+my %is_fetching_question;
 # Added to track active timers for each channel
 my %question_timers;
+# In-memory hash to store categories: { 'cleaned_name' => { id => ID, original_name => 'Original Name' } }
+my %categories_cache;
+my $categories_last_fetched = 0; # Timestamp to control fetching frequency
 
 has on_message => ( is => 'ro', default => sub {
         my $self = shift;
@@ -61,30 +65,80 @@ sub get_trivia_data {
     return $data;
 }
 
+# New sub to fetch categories from OpenTDB API
+sub _fetch_categories {
+    my $self = shift;
+
+    # Only fetch if cache is empty or older than 1 hour (3600 seconds)
+    if (!%categories_cache || (time - $categories_last_fetched) > 3600) {
+        my $api_url = 'https://opentdb.com/api_category.php';
+        debug("-> Fetching trivia categories from API: $api_url");
+
+        return $self->discord->rest->ua->get_p($api_url)->then(sub {
+            my $tx = shift;
+            unless ($tx->res->is_success) {
+                $self->log->warn("-> Failed to fetch trivia categories: " . $tx->res->message);
+                return Mojo::Promise->reject("Failed to fetch categories");
+            }
+
+            my $api_data = $tx->res->json;
+            unless (ref $api_data eq 'HASH' && ref $api_data->{trivia_categories} eq 'ARRAY') {
+                $self->log->warn("-> Invalid API response for categories.");
+                return Mojo::Promise->reject("Invalid categories response");
+            }
+
+            %categories_cache = (); # Clear old cache
+            for my $cat (@{$api_data->{trivia_categories}}) {
+                my $original_name = decode_entities($cat->{name});
+                my $cleaned_name = lc $original_name;
+                $cleaned_name =~ s/[^a-z0-9]//g; # Remove non-alphanumeric for matching
+                $categories_cache{$cleaned_name} = {
+                    id => $cat->{id},
+                    original_name => $original_name
+                };
+            }
+            $categories_last_fetched = time;
+            debug("-> Successfully fetched and cached " . scalar(keys %categories_cache) . " categories.");
+            return Mojo::Promise->resolve(1); # Indicate success
+        })->catch(sub {
+            my $err = shift;
+            $self->log->error("Error fetching categories: $err");
+            return Mojo::Promise->reject("Error fetching categories: $err");
+        });
+    } else {
+        debug("-> Using cached trivia categories.");
+        return Mojo::Promise->resolve(1); # Already cached
+    }
+}
+
+
 sub cmd_trivia {
     my ($self, $msg) = @_;
     my $args_str = $msg->{'content'};
-    
+
     $args_str =~ s/^trivia\s*//i;
 
     my @args = split /\s+/, $args_str;
     my $subcommand = lc(shift @args || 'start');
-    
+
     debug("Routing subcommand: '$subcommand'");
 
     if ($subcommand eq 'start') {
-        $self->start_game($msg);
+        my $category_name = join ' ', @args; # Capture the rest as category name
+        $self->start_game($msg, $category_name);
     } elsif ($subcommand eq 'stop') {
         $self->stop_game($msg);
     } elsif ($subcommand eq 'top') {
         $self->show_leaderboard($msg);
+    } elsif ($subcommand eq 'category' && lc(shift @args) eq 'list') {
+        $self->list_categories($msg);
     } else {
         $self->discord->send_message($msg->{'channel_id'}, $self->usage);
     }
 }
 
 sub start_game {
-    my ($self, $msg) = @_;
+    my ($self, $msg, $category_name) = @_; # Added category_name parameter
     my $channel_id = $msg->{'channel_id'};
     my $db = Component::DBI->new();
     my $data = get_trivia_data();
@@ -106,7 +160,7 @@ sub start_game {
     }
 
     # Check if this call is initiated by the "!trivia start" command
-    my $is_initial_start_command = ($msg->{'content'} =~ /^trivia\s*start/i || $msg->{'content'} eq 'trivia');
+    my $is_initial_start_command = ($msg->{'content'} =~ /^trivia\s*start/i || ($msg->{'content'} eq 'trivia' && !defined $category_name));
 
     # Handle explicit '!trivia start' command when a game is already active
     if ($is_initial_start_command && exists $data->{active_game}{$channel_id}) {
@@ -122,7 +176,7 @@ sub start_game {
         delete $data->{active_game}{$channel_id};
         $db->set('trivia', $data); # Save updated state without active_game
     }
-    
+
     # If no active game, and it's explicitly the !trivia start command, reset scores.
     # This ensures scores are only reset when a *new* game session explicitly begins.
     if ($is_initial_start_command) {
@@ -136,9 +190,30 @@ sub start_game {
 
     $self->discord->send_message($channel_id, "Fetching a new trivia question...");
 
-    my $api_url = 'https://opentdb.com/api.php?amount=1&type=multiple';
-    debug("-> Calling trivia API: $api_url");
-    $self->discord->rest->ua->get_p($api_url)->then(sub {
+    # Fetch categories if not cached, then proceed to get question
+    $self->_fetch_categories()->then(sub {
+        my $api_url = 'https://opentdb.com/api.php?amount=1&type=multiple';
+        my $category_id;
+
+        if (defined $category_name && $category_name ne '') {
+            my $cleaned_category_name = lc $category_name;
+            $cleaned_category_name =~ s/[^a-z0-9]//g;
+            # Look up in the new categories_cache structure
+            if (exists $categories_cache{$cleaned_category_name}) {
+                $category_id = $categories_cache{$cleaned_category_name}{id};
+            }
+
+            if (defined $category_id) {
+                $api_url .= "&category=$category_id";
+                debug("-> Using category '$category_name' (ID: $category_id)");
+            } else {
+                $self->discord->send_message($channel_id, "Unknown category: `$category_name`. Using a random category instead. Type `!trivia category list` for available categories.");
+            }
+        }
+
+        debug("-> Calling trivia API: $api_url");
+        return $self->discord->rest->ua->get_p($api_url);
+    })->then(sub {
         my $tx = shift;
         # Always clear the fetching flag once the promise resolves/rejects
         delete $is_fetching_question{$channel_id};
@@ -147,13 +222,13 @@ sub start_game {
             debug("-> API call failed: " . $tx->res->message);
             return $self->discord->send_message($channel_id, "Sorry, I couldn't fetch a trivia question right now.");
         }
-        
+
         my $api_data = $tx->res->json;
         unless (ref $api_data eq 'HASH' && $api_data->{response_code} == 0 && ref $api_data->{results} eq 'ARRAY' && @{$api_data->{results}}) {
             debug("-> API response was invalid or contained no questions.");
-            return $self->discord->send_message($channel_id, "Sorry, I couldn't get a valid trivia question from the database. Please try again later.");
+            return $self->discord->send_message($channel_id, "Sorry, I couldn't get a valid trivia question from the database. Please try again later. It might be due to no questions in the selected category.");
         }
-        
+
         my $question_data = $api_data->{results}[0];
         my @incorrect_answers;
         if (ref $question_data->{incorrect_answers} eq 'ARRAY') {
@@ -173,7 +248,7 @@ sub start_game {
             my $label = (length $answer > 80) ? substr($answer, 0, 77) . '...' : $answer;
             push @buttons, { type => 2, style => 1, label => $label, custom_id => "trivia_answer_$answer" };
         }
-        
+
         my $payload = {
             embeds => [{ color => 3447003, title => "Trivia Time!", description => "**$question**", footer => { text => "Category: " . decode_entities($question_data->{category}) } }],
             components => [{ type => 1, components => \@buttons }],
@@ -188,7 +263,8 @@ sub start_game {
                 question       => $question,
                 correct_answer => $correct_answer,
                 message_id     => $sent_msg->{id},
-                answered       => 0, 
+                answered       => 0,
+                category_name  => $category_name, # Save the requested category name
             };
             debug("-> Saving active game state to DB for channel $channel_id.");
             $db->set('trivia', $game_data);
@@ -201,19 +277,20 @@ sub start_game {
                 if (defined $current_game && !$current_game->{answered}) {
                     # If the question hasn't been answered, announce the correct answer and move to the next question
                     $self->discord->send_message($channel_id, "Time's up! The correct answer was **$current_game->{correct_answer}**.");
-                    
+
                     # Also disable buttons on the timed-out message
                     $self->discord->get_message($channel_id, $current_game->{message_id}, sub {
                         my $original_msg = shift;
                         return unless ref $original_msg eq 'HASH';
-                        $original_msg->{components} = []; 
+                        $original_msg->{components} = [];
                         $self->discord->edit_message($channel_id, $current_game->{message_id}, $original_msg);
                     });
 
                     # Start the next question after a brief pause
                     Mojo::IOLoop->timer(2 => sub {
-                        my $mock_msg = { channel_id => $channel_id, content => '' }; 
-                        $self->start_game($mock_msg);
+                        my $mock_msg = { channel_id => $channel_id, content => '' };
+                        # Pass category for next question if available in game state
+                        $self->start_game($mock_msg, $current_game->{category_name});
                     });
                 }
                 delete $question_timers{$channel_id};
@@ -238,7 +315,7 @@ sub handle_answer {
 
     my $db = Component::DBI->new();
     my $data = get_trivia_data();
-    
+
     return unless (ref $data->{active_game} eq 'HASH');
     my $game = $data->{active_game}{$channel_id};
     return unless (ref $game eq 'HASH' && %$game);
@@ -247,7 +324,7 @@ sub handle_answer {
     # This prevents processing answers for old questions if multiple are lingering
     unless (defined $game->{message_id} && $game->{message_id} eq $interaction_message_id) {
         debug("-> Received answer for a non-active or outdated question. Ignoring.");
-        return; 
+        return;
     }
 
     # Check if this question has already been answered correctly
@@ -261,7 +338,7 @@ sub handle_answer {
         my $user_id = $user->{id};
         $data->{scores}{$user_id}++;
         $game->{answered} = 1; # Set flag: this question is now answered
-        
+
         my $original_message_id = $game->{message_id};
         $db->set('trivia', $data); # Save updated scores and answered flag
 
@@ -269,10 +346,10 @@ sub handle_answer {
         $self->discord->get_message($channel_id, $original_message_id, sub {
             my $original_msg = shift;
             return unless ref $original_msg eq 'HASH';
-            $original_msg->{components} = []; 
+            $original_msg->{components} = [];
             $self->discord->edit_message($channel_id, $original_message_id, $original_msg);
         });
-        
+
         # Clear the question timer immediately if answered correctly
         if (defined $question_timers{$channel_id}) {
             Mojo::IOLoop->remove($question_timers{$channel_id});
@@ -303,8 +380,9 @@ sub handle_answer {
 
             # Start a timer to get the next question
             Mojo::IOLoop->timer(5 => sub {
-                my $mock_msg = { channel_id => $channel_id, content => '' }; 
-                $self->start_game($mock_msg);
+                my $mock_msg = { channel_id => $channel_id, content => '' };
+                # Pass category for next question if available in game state
+                $self->start_game($mock_msg, $data->{active_game}{$channel_id}{category_name});
             });
         }
 
@@ -312,7 +390,7 @@ sub handle_answer {
         # Wrong answer logic: Deduct a point, but not below zero
         my $user_id = $user->{id};
         if (defined $data->{scores}{$user_id} && $data->{scores}{$user_id} > 0) { # Only deduct if score is positive
-            $data->{scores}{$user_id}--; 
+            $data->{scores}{$user_id}--;
             $self->discord->send_message($channel_id, "❌ Sorry, <\@$user_id>, that's not correct! Your score is now: $data->{scores}{$user_id}.");
         } else {
             # Optional: Message if score is already 0 or undef
@@ -346,7 +424,7 @@ sub stop_game {
     my $game = $data->{active_game}{$channel_id}; # Get game data before deleting
 
     $self->discord->send_message($channel_id, "Trivia game stopped. The correct answer was **$game->{correct_answer}**.\n\nThanks for playing!");
-    
+
     my $original_message_id = $game->{message_id};
     debug("-> Disabling buttons on original message ID $original_message_id.");
     $self->discord->get_message($channel_id, $original_message_id, sub {
@@ -355,7 +433,7 @@ sub stop_game {
         $original_msg->{components} = [];
         $self->discord->edit_message($channel_id, $original_message_id, $original_msg);
     });
-    
+
     delete $data->{active_game}{$channel_id}; # Now delete the active game entry
     debug("-> Active game deleted. Saving state to DB.");
     $db->set('trivia', $data);
@@ -372,7 +450,7 @@ sub show_leaderboard {
     my $channel_id = $msg->{'channel_id'};
     debug("Showing leaderboard for channel $channel_id.");
     my $data = get_trivia_data();
-    
+
     my $scores = $data->{scores};
     unless (ref $scores eq 'HASH' && %$scores) {
         debug("-> No scores found.");
@@ -381,7 +459,7 @@ sub show_leaderboard {
 
     my @sorted_user_ids = sort { $scores->{$b} <=> $scores->{$a} } keys %$scores;
     debug("-> Found " . scalar(@sorted_user_ids) . " users with scores.");
-    
+
     my @leaderboard_lines;
     my $rank = 1;
     for my $user_id (@sorted_user_ids) {
@@ -396,9 +474,42 @@ sub show_leaderboard {
         color => 16776960,
         description => join("\n", @leaderboard_lines),
     }]};
-    
+
     debug("-> Sending leaderboard embed.");
     $self->discord->send_message($channel_id, $embed);
+}
+
+# New sub to list available categories
+sub list_categories {
+    my ($self, $msg) = @_;
+    my $channel_id = $msg->{'channel_id'};
+
+    $self->discord->send_message($channel_id, "Fetching available trivia categories...");
+
+    $self->_fetch_categories()->then(sub {
+        unless (%categories_cache) {
+            return $self->discord->send_message($channel_id, "Sorry, I couldn't fetch any trivia categories right now.");
+        }
+
+        # Sort categories by their original names for a cleaner list
+        my @sorted_cleaned_names = sort { $categories_cache{$a}{original_name} cmp $categories_cache{$b}{original_name} } keys %categories_cache;
+
+        my @formatted_categories;
+        for my $cleaned_name (@sorted_cleaned_names) {
+            push @formatted_categories, "- " . $categories_cache{$cleaned_name}{original_name};
+        }
+
+        my $embed = { embeds => [{
+            title => "📚 Available Trivia Categories",
+            color => 5793266,
+            description => "You can use one of these categories with `!trivia start <category>`:\n\n" . join("\n", @formatted_categories),
+        }]};
+
+        $self->discord->send_message($channel_id, $embed);
+    })->catch(sub {
+        my $err = shift;
+        $self->discord->send_message($channel_id, "Sorry, I couldn't list trivia categories right now: $err");
+    });
 }
 
 1;
