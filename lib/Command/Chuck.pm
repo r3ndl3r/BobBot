@@ -14,12 +14,21 @@ has discord             => ( is => 'lazy', builder => sub { shift->bot->discord 
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has name                => ( is => 'ro', default => 'Chuck Norris?' );
 has access              => ( is => 'ro', default => 0 );
-has description         => ( is => 'ro', default => '' );
+has description         => ( is => 'ro', default => 'Gets a random Chuck Norris fact.' );
 has pattern             => ( is => 'ro', default => '^chuck ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_chuck } );
 has usage               => ( is => 'ro', default => '!chuck' );
 
-my @chuck = split /\n/, <<'EOF';
+my @chuck;
+
+sub cmd_chuck {
+    my ($self, $msg) = @_;
+    $self->discord->send_message($msg->{'channel_id'}, $chuck[rand @chuck]);
+    $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
+}
+
+BEGIN {
+    @chuck = split /\n/, <<'EOF';
 Chuck Norris doesn’t read books. He stares them down until he gets the information he wants.
 Time waits for no man. Unless that man is Chuck Norris.
 If you spell Chuck Norris in Scrabble, you win. Forever.
@@ -122,23 +131,6 @@ Chuck Norris’ cowboy boots are made from real cowboys.
 Chuck Norris can start a fire with an ice cube.
 The flu gets a Chuck Norris shot every year.
 EOF
-
-sub cmd_chuck {
-    my ($self, $msg) = @_;
-
-    my $channel = $msg->{'channel_id'};
-    my $msgid   = $msg->{'id'};
-    my $author  = $msg->{'author'};
-    my $args    = $msg->{'content'};
-
-    my $pattern = $self->pattern;
-    $args =~ s/$pattern//i;
-
-    my $discord = $self->discord;
-    my $replyto = '<@' . $author->{'id'} . '>';
-
-    $discord->send_message($channel, $chuck[rand @chuck]);
-    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
 }
 
 1;
