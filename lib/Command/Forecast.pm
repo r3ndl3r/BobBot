@@ -47,7 +47,7 @@ has on_message => ( is => 'ro', default =>
                 my $data  = $msg->{'data'};
 
                 if ($data->{'custom_id'} eq 'update.weather') {
-                    $self->discord->interaction_response($id, $token, $data->{'custom_id'}, 'UPDATING PLEASE WAIT...', sub { $self->forecast });
+                    $self->discord->interaction_response($id, $token, { type => 4, data => { content => 'UPDATING PLEASE WAIT...' } }, sub { $self->forecast });
                 }    
             }
         )
