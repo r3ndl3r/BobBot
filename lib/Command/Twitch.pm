@@ -147,9 +147,9 @@ sub send_message {
     # If last online record exists and it's less than 10 mins ago then probably stream crashed.
     my $msg;
     if ($twitch->{$streamer}{'lastOn'} && $twitch->{$streamer}{'lastOn'} > 0 && (time() - $twitch->{$streamer}{'lastOn'}) < 600) {
-        $msg = "**$streamer** is back online (from probable stream crash).";
+        $msg = "Streamer `$streamer` is back online (from probable stream crash).";
     } else {
-        $msg = "**$streamer** is online.";
+        $msg = "Streamer `$streamer` is online.";
     }
     
     # Streamer is online but no message exists. Create a new message.
@@ -209,7 +209,7 @@ sub add_streamer {
     my ($self, $discord, $channel, $msg, $streamer) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "'**$streamer**' is not valid channel.");
+        $discord->send_message($channel, "The streamer `$streamer` is not valid.");
         return;            
     }
 
@@ -219,22 +219,22 @@ sub add_streamer {
     # Check to see if stream already exists.
     for my $s (@streams) {
         if ($streamer eq $s) {
-            $discord->send_message($channel, "Streamer '**$streamer**' is already in Twitch alerts list.");
-            react_robot($discord, $msg);
+            $discord->send_message($channel, "Streamer `$streamer` is already in Twitch alerts list.");
+            react_error($discord, $msg);
             return;
         }
     }
 
     unless ( validChannel($self, $streamer) ) {
-        $discord->send_message($channel, "Streamer '**$streamer**' is not a valid Twitch channel.");
-        react_robot($discord, $msg);
+        $discord->send_message($channel, "Streamer `$streamer` is not a valid.");
+        react_error($discord, $msg);
         return;
     }
 
     $twitch->{$streamer} = {};
     twitchSet($twitch);
 
-    $discord->send_message($channel, "Added '**$streamer**' to Twitch alerts list.");
+    $discord->send_message($channel, "Added `$streamer` to Twitch alerts list.");
     react_robot($discord, $msg);
 }
 
@@ -243,7 +243,8 @@ sub del_streamer {
     my ($discord, $channel, $msg, $streamer, $config) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "Streamer '**$streamer**' is not valid.");
+        $discord->send_message($channel, "Streamer `$streamer` is not valid.");
+        react_error($discord, $msg);
         return;
     }
 
@@ -260,14 +261,15 @@ sub del_streamer {
             # Delete the streamer from the list
             delete $twitch->{$streamer};
             twitchSet($twitch);
-            $discord->send_message($channel, "Deleted '**$streamer**' from Twitch alerts list.");
+            $discord->send_message($channel, "Deleted `$streamer` from alerts list.");
             react_robot($discord, $msg);
 
             return;
         }
     }
 
-    $discord->send_message($channel, "Streamer '**$streamer**' is not in the Twitch alerts list.");
+    $discord->send_message($channel, "Streamer `$streamer` is not in the alerts list.");
+    react_error($discord, $msg);
 }
 
 
@@ -281,8 +283,7 @@ sub list_streamers {
         return;
     }
 
-    # Join all the streamers we have tagging enabled for.
-    $discord->send_message($channel, "Twitch alerts enabled for: " . join ', ', sort @streams);
+    $discord->send_message($channel, "Twitch alerts enabled for: " . join(', ', map { "`$_`" } sort @streams));
     react_robot($discord, $msg);
 }
 
@@ -294,7 +295,7 @@ sub tag {
     my @streams   = ref $twitch eq 'HASH' ? keys %$twitch : ();
     my %streamers = map { $_ => 1 } @streams;
 
-    react_robot($discord, $msg);
+    
 
     if ($streamer =~ /^l(ist)?$/) {
         my @tagged;
@@ -304,26 +305,29 @@ sub tag {
             }
         }
         if (@tagged) {
-            $discord->send_message($channel, "<\@$uID> you have tagging enabled for: " . join(', ', sort @tagged));
+            $discord->send_message($channel, "<\@$uID> you have tagging enabled for: " . join(', ', map { "`$_`" } sort @tagged));
         } else {
             $discord->send_message($channel, "<\@$uID> you don't have tagging enabled for anybody.");
         }
         
+        react_robot($discord, $msg);
         return;
     }
 
     if ($twitch->{$streamer}) {
         if ($twitch->{$streamer}{'tags'}{$uID}) {
             delete $twitch->{$streamer}{'tags'}{$uID};
-            $discord->send_message($channel, "<\@$uID> Twitch tagging removed for '**$streamer**'.");
+            $discord->send_message($channel, "<\@$uID> Twitch tagging removed for `$streamer`.");
             twitchSet($twitch);
         } else {
             $twitch->{$streamer}{'tags'}{$uID} = 1;
-            $discord->send_message($channel, "<\@$uID> Twitch tagging added for '**$streamer**'.");
+            $discord->send_message($channel, "<\@$uID> Twitch tagging added for `$streamer`.");
             twitchSet($twitch);
         }
+        react_robot($discord, $msg);
     } else {
-        $discord->send_message($channel, "<\@$uID> '**$streamer**' is not a valid streamer.");
+        $discord->send_message($channel, "<\@$uID> `$streamer` is not a valid streamer.");
+        react_error($discord, $msg);
     }
 }
 
@@ -490,6 +494,7 @@ sub help {
 
 
 sub react_robot { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖") }
+sub react_error { my ($discord, $msg) = @_; $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑") }
 
 
 1;
