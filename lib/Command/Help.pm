@@ -26,60 +26,87 @@ Eg: `!help uptime`
 EOF
 );
 
-sub cmd_help
-{
+# Set to 1 for verbose output, 0 to disable.
+my $debug = 1;
+sub debug { my $msg = shift; say "[Help DEBUG] $msg" if $debug }
+
+sub cmd_help {
     my ($self, $msg) = @_;
 
     my $channel = $msg->{'channel_id'};
-    my $author = $msg->{'author'};
-    my $args = $msg->{'content'};
+    my $author  = $msg->{'author'};
+    my $args    = $msg->{'content'};
 
     my $pattern = $self->pattern;
+    # Remove the command trigger from the arguments string
     $args =~ s/$pattern//i;
 
     my $discord = $self->discord;
-    my $bot = $self->bot;
-    my $replyto = '<@' . $author->{'id'} . '>';
+    my $bot     = $self->bot;
 
     my $commands = $bot->get_commands;
-    my $trigger = $bot->trigger;
+    my $trigger  = $bot->trigger;
 
+    # Check if a specific command was requested (i.e., $args is not empty)
     if ( defined $args and length $args > 0 )
     {
+        debug("User requested help for a specific command: '$args'");
         my $command = undef;
-        foreach my $pattern (%{$bot->patterns})
+        # Iterate through all registered command patterns to find a match
+        foreach my $cmd_pattern (keys %{$bot->patterns})
         {
-            if ( $args =~ /$pattern/i ) 
+            if ( $args =~ /$cmd_pattern/i )
             {
-                $command = $bot->get_command_by_pattern($pattern);
-                last;
+                # Found a matching pattern, get the command object
+                $command = $bot->get_command_by_pattern($cmd_pattern);
+                last; # Exit loop once a match is found
             }
         }
 
+        # If a command was found, send its detailed help to the channel as an embed
         if ( defined $command )
         {
-            my $help_str = "__**" . $command->{'name'} . "**__: \n\n`" . $command->{'description'} . "`\n\n";
-            $help_str .= "__**Usage:**__\n\n" . $command->{'usage'};
-
-            # Reply via DM, ack the message with a checkmark reaction
-            $discord->send_ack_dm($channel, $msg->{'id'}, $author->{'id'}, $help_str);
+            debug("Found command: " . $command->{'name'});
+            my $embed = {
+                embeds => [{
+                    title       => "__**" . $command->{'name'} . "**__",
+                    description => "`" . $command->{'description'} . "`",
+                    color       => 3447003, # A nice blue color for embeds
+                    fields      => [
+                        {
+                            name    => "__**Usage:**__",
+                            value   => $command->{'usage'} || "No specific usage provided.",
+                            inline  => 0,
+                        }
+                    ],
+                }]
+            };
+            # Send the embed to the channel
+            $discord->send_message($channel, $embed);
+            # React to the original message to acknowledge it
+            $self->bot->react_robot($channel, $msg->{'id'});
+            debug("Sent detailed help for '" . $command->{'name'} . "' to channel: $channel.");
         }
         else
         {
-            $discord->send_message($channel, "Sorry, no command exists by that name.");
+            # Command not found, send an error message to the channel
+            debug("Command '$args' not found.");
+            $discord->send_message($channel, "Sorry, no command exists by that name. Use `!help` to list all available commands.");
         }
     }
-    else    # Display all
+    else # No arguments provided, display a list of all commands using an embed
     {
-        my $help_str = "This bot has the following commands available: \n\n";
-
+        debug("User requested a list of all commands.");
         my @public;
         my @botowner;
         my @serverowner;
+
+        # Populate command lists by access level
         foreach my $key (sort keys %{$commands})
         {
             my $command = $bot->get_command_by_name($key);
             my $access = $command->{'access'};
+            # Assign commands to respective lists based on their access level
             if ( defined $access )
             {
                 push @public, $key if $access == 0;
@@ -88,30 +115,41 @@ sub cmd_help
             }
         }
 
-        $help_str .= "**Public**:```\n";
-        foreach my $key (@public)
-        {
-            $help_str .= "- $key\n";
+        my @fields;
+
+        # Add fields to the embed for each category that has commands
+        if (@public) {
+            push @fields, { name => "Public Commands", value => "```\n" . (join "\n", @public) . "```", inline => 0 };
+        }
+        if (@botowner) {
+            push @fields, { name => "Restricted to Bot Owner", value => "```\n" . (join "\n", @botowner) . "```", inline => 0 };
+        }
+        if (@serverowner) {
+            push @fields, { name => "Restricted to Server Owner", value => "```\n" . (join "\n", @serverowner) . "```", inline => 0 };
         }
 
-        $help_str .= "```\n\n**Restricted to Bot Owner:**```\n";
-        foreach my $key (@botowner)
-        {
-            $help_str .= "- $key\n";
+        my $embed_description = "Use `" . $trigger . "help <command>` to see more about a specific command.";
+
+        # If no commands are available at all, update the description
+        unless (@fields) {
+            $embed_description = "There are no commands available at this time.";
+            debug("No commands found to list.");
         }
 
-        $help_str .= "```\n\n**Restricted to Server Owner:**\n```";
-        foreach my $key (@serverowner)
-        {
-            $help_str .= "- $key\n";
-        }
+        my $embed = {
+            embeds => [{
+                title       => "Available Bot Commands",
+                description => $embed_description,
+                color       => 3447003, # A nice blue color
+                fields      => \@fields,
+            }]
+        };
 
-        $help_str .= "```\nUse `" . $trigger . "help <command>` to see more about a specific command.";
-
-        my $client_id = $bot->client_id();
-    
-        # Send a message back to the user via DM
-        $discord->send_ack_dm($channel, $msg->{'id'}, $author->{'id'}, $help_str);
+        # Send the embed to the channel
+        $discord->send_message($channel, $embed);
+        # React to the original message to acknowledge it
+        $self->bot->react_robot($channel, $msg->{'id'});
+        debug("Sent overall help list to channel: $channel.");
     }
 }
 
