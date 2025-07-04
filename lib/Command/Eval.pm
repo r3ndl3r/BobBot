@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
-use Component::DBI;
 use Data::Dumper;
 
 use Exporter qw(import);
@@ -15,16 +14,13 @@ our @EXPORT_OK = qw(cmd_eval);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-
+has db                  => ( is => 'ro', required => 1 );
 has name                => ( is => 'ro', default => 'Eval' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Make the bot do something.' );
 has pattern             => ( is => 'ro', default => '^eval ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_eval } );
-has usage               => ( is => 'ro', default => <<EOF
-Usage: !eval <perl commands>
-EOF
-);
+has usage               => ( is => 'ro', default => 'Usage: !eval <perl code>' );
 
 
 sub cmd_eval {
@@ -37,10 +33,9 @@ sub cmd_eval {
     my $args    = $msg->{'content'};
        $args    =~ s/$pattern//i;
     my $replyto = '<@' . $author->{'id'} . '>';
-    my $db      = Component::DBI->new();
     
     $discord->send_message($channel, eval $args);
-    $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
+    $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
 }
 
 1;
