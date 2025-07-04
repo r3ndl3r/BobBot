@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
-use Component::DBI;
 use Data::Dumper;
 use JSON;
 
@@ -16,7 +15,7 @@ our @EXPORT_OK = qw(cmd_storage);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-
+has db                  => ( is => 'ro', required => 1 );
 has name                => ( is => 'ro', default => 'Storage' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'A command to store and retrieve arbitrary data in the bot\'s database.' );
@@ -42,7 +41,7 @@ has usage               => ( is => 'ro', default => <<~'EOF'
     *Example:* `!storage show my_settings`
 
     `!storage delete <key_name>`
-    Deletes a specified storage key and its associated data from the database.
+    Dletes a specified storage key and its associated data from the database.
     *Example:* `!storage delete old_data`
 
     `!storage list`
@@ -64,13 +63,12 @@ sub cmd_storage {
 
     my $channel = $msg->{'channel_id'};
     my $args    = $msg->{'content'};
-    $args       =~ s/$pattern//i;
+    $args       =~ s/$pattern//i; # Remove command trigger
 
-    my $db = Component::DBI->new();
-
+    # Subcommand parsing: Split into subcommand and the rest as argument string
     my @parsed_args = split /\s+/, $args, 2;
     my $subcommand = lc shift @parsed_args;
-    my $argument_str = shift @parsed_args;
+    my $argument_str = shift @parsed_args; # This will contain the rest of the arguments for the subcommand
 
     debug("cmd_storage: Parsed subcommand: '$subcommand', argument string: '" . ($argument_str // 'undef') . "'");
 
@@ -81,7 +79,7 @@ sub cmd_storage {
             debug("cmd_storage: Init command missing key name.");
             return;
         }
-        $self->init_key($discord, $channel, $msg, $db, $argument_str);
+        $self->init_key($discord, $channel, $msg, $argument_str);
     } elsif ($subcommand eq 'set') {
         # 'set' command expects a key_name followed by the value (can contain spaces)
         unless (defined $argument_str && $argument_str =~ /^(\S+)\s+(.+)$/s) { # Key and value
@@ -91,7 +89,7 @@ sub cmd_storage {
             return;
         }
         my ($key_name, $value_str) = ($1, $2);
-        $self->set_value($discord, $channel, $msg, $db, $key_name, $value_str);
+        $self->set_value($discord, $channel, $msg, $key_name, $value_str);
     } elsif ($subcommand eq 'show') {
         unless (defined $argument_str && length $argument_str > 0) {
             $discord->send_message($channel, "Usage: `!storage show <key_name>`");
@@ -99,7 +97,7 @@ sub cmd_storage {
             debug("cmd_storage: Show command missing key name.");
             return;
         }
-        $self->show_value($discord, $channel, $msg, $db, $argument_str);
+        $self->show_value($discord, $channel, $msg, $argument_str);
     } elsif ($subcommand eq 'delete' || $subcommand eq 'del') {
         unless (defined $argument_str && length $argument_str > 0) {
             $discord->send_message($channel, "Usage: `!storage delete <key_name>`");
@@ -107,9 +105,9 @@ sub cmd_storage {
             debug("cmd_storage: Delete command missing key name.");
             return;
         }
-        $self->delete_key($discord, $channel, $msg, $db, $argument_str);
+        $self->delete_key($discord, $channel, $msg, $argument_str);
     } elsif ($subcommand eq 'list') {
-        $self->list_keys($discord, $channel, $msg, $db);
+        $self->list_keys($discord, $channel, $msg);
     } else {
         # If no valid subcommand is recognized, display the general usage help.
         $discord->send_message($channel, $self->usage);
@@ -118,14 +116,13 @@ sub cmd_storage {
     }
 }
 
-
 # Helper function to initialize a new storage key.
 sub init_key {
-    my ($self, $discord, $channel, $msg, $db, $key_name) = @_;
+    my ($self, $discord, $channel, $msg, $key_name) = @_;
     debug("init_key: Attempting to initialize key '$key_name'.");
 
     # Check if the key already exists to prevent accidental overwrites if not intended.
-    if (defined $db->get($key_name)) {
+    if (defined $self->db->get($key_name)) {
         $discord->send_message($channel, "Storage: Key '**$key_name**' already exists. Use `!storage set` to modify its value.");
         $self->bot->react_error($channel, $msg->{'id'});
         debug("init_key: Key '$key_name' already exists. Aborting initialization.");
@@ -133,7 +130,7 @@ sub init_key {
     }
 
     # Store an empty hash reference, which is a common way to initialize data structures in Perl.
-    if ($db->set($key_name, {})) {
+    if ($self->db->set($key_name, {})) {
         $discord->send_message($channel, "Storage: Initialized key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
         debug("init_key: Successfully initialized key '$key_name'.");
@@ -144,10 +141,9 @@ sub init_key {
     }
 }
 
-
 # Helper function to set (store) a value for a given storage key.
 sub set_value {
-    my ($self, $discord, $channel, $msg, $db, $key_name, $value_str) = @_;
+    my ($self, $discord, $channel, $msg, $key_name, $value_str) = @_;
     debug("set_value: Attempting to set value for key '$key_name' with string: '$value_str'.");
 
     my $data_to_store;
@@ -167,7 +163,7 @@ sub set_value {
     }
 
     # Attempt to store the data in the database.
-    if ($db->set($key_name, $data_to_store)) {
+    if ($self->db->set($key_name, $data_to_store)) {
         $discord->send_message($channel, "Storage: Set value for key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
         debug("set_value: Successfully set value for key '$key_name'.");
@@ -178,13 +174,12 @@ sub set_value {
     }
 }
 
-
 # Helper function to show (retrieve and display) the value of a storage key.
 sub show_value {
-    my ($self, $discord, $channel, $msg, $db, $key_name) = @_;
+    my ($self, $discord, $channel, $msg, $key_name) = @_;
     debug("show_value: Attempting to retrieve and display value for key '$key_name'.");
 
-    my $data = $db->get($key_name);
+    my $data = $self->db->get($key_name);
 
     # Check if the key exists in the database.
     unless (defined $data) {
@@ -211,14 +206,13 @@ sub show_value {
     debug("show_value: Successfully sent value for key '$key_name' to channel.");
 }
 
-
 # Helper function to delete a storage key.
 sub delete_key {
-    my ($self, $discord, $channel, $msg, $db, $key_name) = @_;
+    my ($self, $discord, $channel, $msg, $key_name) = @_;
     debug("delete_key: Attempting to delete key '$key_name'.");
 
     # Check if the key exists before attempting deletion to provide better feedback.
-    unless (defined $db->get($key_name)) {
+    unless (defined $self->db->get($key_name)) {
         $discord->send_message($channel, "Storage: Key '**$key_name**' does not exist.");
         $self->bot->react_error($channel, $msg->{'id'});
         debug("delete_key: Key '$key_name' does not exist. Aborting deletion.");
@@ -226,7 +220,7 @@ sub delete_key {
     }
 
     # Attempt to delete the key from the database.
-    if ($db->del($key_name)) {
+    if ($self->db->del($key_name)) {
         $discord->send_message($channel, "Storage: Deleted key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
         debug("delete_key: Successfully deleted key '$key_name'.");
@@ -240,10 +234,10 @@ sub delete_key {
 
 # Helper function to list all top-level storage keys in the database.
 sub list_keys {
-    my ($self, $discord, $channel, $msg, $db) = @_;
+    my ($self, $discord, $channel, $msg) = @_;
     debug("list_keys: Retrieving all top-level storage keys from the database.");
 
-    my $dbh = $db->{'dbh'};
+    my $dbh = $self->db->{'dbh'};
     # Query the database to get all 'name' entries from the 'storage' table.
     my $sql = "SELECT name FROM storage";
     my $sth = $dbh->prepare($sql);
@@ -267,6 +261,5 @@ sub list_keys {
     }
     $self->bot->react_robot($channel, $msg->{'id'});
 }
-
 
 1;
