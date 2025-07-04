@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
-use Component::DBI;
 use List::Util qw(shuffle);
 use HTML::Entities qw(decode_entities);
 use Mojo::Promise;
