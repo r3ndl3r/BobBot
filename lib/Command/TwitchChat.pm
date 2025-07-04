@@ -15,7 +15,6 @@ our @EXPORT_OK = qw(cmd_tc);
 has bot           => ( is => 'ro' );
 has discord       => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log           => ( is => 'lazy', builder => sub { shift->bot->log } );
-has db            => ( is => 'ro', required => 1 );
 has name          => ( is => 'ro', default => 'TwitchChat' );
 has access        => ( is => 'ro', default => 1 );
 has description   => ( is => 'ro', default => 'Sends messages to Twitch chat.' );
