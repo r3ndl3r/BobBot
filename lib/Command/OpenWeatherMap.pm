@@ -17,12 +17,12 @@ has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has db                  => ( is => 'ro', required => 1 );
-
-has name                => ( is => 'ro', default => 'Weather' );
+has name                => ( is => 'ro', default => 'OpenWeatherMap' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Weather forecasting via OpenWeatherMap.' );
 has pattern             => ( is => 'ro', default => '^weather ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_weather_router } );
+has timer_seconds       => ( is => 'ro', default => 3600 );
 has usage               => ( is => 'ro', default => <<~'EOF'
     **Weather Command Help**
 
@@ -46,13 +46,13 @@ has usage               => ( is => 'ro', default => <<~'EOF'
     EOF
 );
 
-has timer_seconds       => ( is => 'ro', default => 3600 );
 
 has timer_sub => ( is => 'ro', default => sub {
         my $self = shift;
         Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->run_all_forecasts; } )
     }
 );
+
 
 has on_message => ( is => 'ro', default => sub {
         my $self = shift;
@@ -71,8 +71,9 @@ has on_message => ( is => 'ro', default => sub {
     }
 );
 
+
 my $debug = 0;
-sub debug { my $msg = shift; say "[Weather DEBUG] $msg" if $debug }
+sub debug { my $msg = shift; say "[WEATHER DEBUG] $msg" if $debug }
 
 
 sub cmd_weather_router {
