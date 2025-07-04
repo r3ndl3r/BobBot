@@ -6,7 +6,6 @@ use Moo;
 use strictures 2;
 use namespace::clean;
 
-use Component::DBI;
 use Time::Duration;
 use Data::Dumper;
 use POSIX qw(strftime);
@@ -14,26 +13,61 @@ use POSIX qw(strftime);
 has bot           => ( is => 'ro' );
 has discord       => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log           => ( is => 'lazy', builder => sub { shift->bot->log } );
+has db            => ( is => 'ro', required => 1 );
 has name          => ( is => 'ro', default => 'Tasks' );
 has access        => ( is => 'ro', default => 0 );
 has description   => ( is => 'ro', default => 'A task assignment system.' );
-has usage         => ( is => 'ro', default => 'Usage: !tasks help' );
-has pattern       => ( is => 'ro', default => sub { qr/^tasks?\b/i } );
+has pattern       => ( is => 'ro', default => sub { qr/^task(s)?\b/i } );
 has function      => ( is => 'ro', default => sub { \&cmd_tasks } );
+has usage         => ( is => 'ro', default => <<~'EOF'
+    **Task Manager Command Help**
+
+    This command allows you to manage tasks for registered "kids".
+
+    `!tasks kadd/ka <Discord_ID> <nickname>`
+    Registers a Discord user as a "kid" who can be assigned tasks.
+    *Example:* `!tasks kadd 123456789012345678 mykidname`
+
+    `!tasks kdel/kd <nickname>`
+    Unregisters a kid from the task system and removes any tasks assigned to them.
+    *Example:* `!tasks kdel mykidname`
+
+    `!tasks add/a <nickname> <description>`
+    Assigns a new task with a unique ID (e.g., T1, T2) to a registered kid. The kid will be notified via DM.
+    *Example:* `!tasks add mykidname "Clean your room"`
+
+    `!tasks del/d <Task_ID>`
+    Removes an active task from the system by its unique ID. This command can remove any task.
+    *Example:* `!tasks del T5`
+
+    `!tasks complete/c <Task_ID>`
+    Allows a registered kid to mark one of their own tasks as complete. The task assigner will receive a DM.
+    *Example:* `!tasks complete T1`
+
+    `!tasks list/l`
+    Displays all current, incomplete tasks. If you are a registered kid, you will only see your own tasks. Otherwise, all active tasks for all kids will be listed.
+    *Example:* `!tasks list`
+
+    `!tasks remind/r`
+    Manually triggers immediate DM reminders for all outstanding tasks to their assigned kids.
+    *Example:* `!tasks remind`
+    EOF
+);
+
 has timer_sub     => ( is => 'ro', default => sub { 
         my $self = shift;
         Mojo::IOLoop->recurring( 600 => sub { $self->send_reminders } );
     }
 );
 
-# Set to 1 for verbose output, 0 to disable.
-my $debug = 1;
+
+my $debug = 0;
 sub debug { my $msg = shift; say "[Tasks DEBUG] $msg" if $debug }
 
 # Helper function to safely load and initialize the data structure.
 sub get_task_data {
-    my $db = Component::DBI->new();
-    my $data = $db->get('tasks') || {};
+    my $self = shift;
+    my $data = $self->db->get('tasks') || {};
     #debug("Loading data from DB: " . Dumper($data));
 
     # Ensure all top-level keys are initialized correctly.
@@ -44,7 +78,6 @@ sub get_task_data {
     return $data;
 }
 
-# Main command router.
 
 sub cmd_tasks {
     my ($self, $msg) = @_;
@@ -52,6 +85,11 @@ sub cmd_tasks {
     debug("Received command string: '$args_str'");
     $args_str =~ s/^tasks?\s*//i;
     my @args = split /\s+/, $args_str, 2;
+
+    if (!@args) {
+        $self->discord->send_message($msg->{channel_id}, $self->usage);
+        return;
+    }
     
     my $subcommand = lc shift @args;
     debug("Parsed subcommand: '$subcommand'");
@@ -73,18 +111,13 @@ sub cmd_tasks {
     } elsif ($subcommand =~ /^l(ist)?$/i) {
         $self->task_list($msg);
     } elsif ($subcommand =~ /^r(emind)?$/i) {
-        # ADDED: New command to manually trigger reminders.
         $self->discord->send_message($msg->{'channel_id'}, "Manually sending reminders for all active tasks...");
         $self->send_reminders();
-    } elsif ($subcommand =~ /^h(elp)?$/i) {
-        $self->task_help($msg);
     } else {
-        debug("Unknown subcommand received.");
-        $self->discord->send_message($msg->{'channel_id'}, "Unknown command. Use `!tasks help` for a list of commands.");
+        $self->discord->send_message($msg->{channel_id}, $self->usage);
     }
 }
 
-# --- Kid Management ---
 
 sub kadd {
     my ($self, $msg, $id, $nickname) = @_;
@@ -93,26 +126,27 @@ sub kadd {
         debug("-> Failure: Invalid arguments provided.");
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks kadd <Discord_ID> <nickname>`");
     }
-    my $db = Component::DBI->new();
-    my $data = get_task_data();
+    my $data = $self->get_task_data();
     $data->{kids}{lc($nickname)} = $id;
-    $db->set('tasks', $data);
+    $self->db->set('tasks', $data);
     debug("-> Success: Added '$nickname' to database.");
     $self->discord->send_message($msg->{'channel_id'}, "Added kid **$nickname**.");
 }
 
+
 sub kdel {
     my ($self, $msg, $nickname) = @_;
+
     debug("Attempting to delete kid: '$nickname'");
     unless ($nickname) {
         debug("-> Failure: No nickname provided.");
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks kdel <nickname>`");
     }
-    my $db = Component::DBI->new();
-    my $data = get_task_data();
+    
+    my $data = $self->get_task_data();
     if (delete $data->{kids}{lc($nickname)}) {
         delete $data->{active_tasks}{lc($nickname)};
-        $db->set('tasks', $data);
+        $self->db->set('tasks', $data);
         debug("-> Success: Removed '$nickname' from database.");
         $self->discord->send_message($msg->{'channel_id'}, "Removed kid **$nickname**.");
     } else {
@@ -121,24 +155,22 @@ sub kdel {
     }
 }
 
-# --- Task Management ---
 
 sub task_add {
     my ($self, $msg, $nickname, $task_desc) = @_;
+
     debug("Attempting to assign task. Nickname: '$nickname', Task: '$task_desc'");
     unless ($nickname && $task_desc) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks add <nickname> <task description>`");
     }
-    my $db = Component::DBI->new();
-    my $data = get_task_data();
+
+    my $data = $self->get_task_data();
     $nickname = lc($nickname);
     
     unless (exists $data->{kids}{$nickname}) {
         debug("-> Failure: Kid '$nickname' not found.");
         return $self->discord->send_message($msg->{'channel_id'}, "Kid '**$nickname**' not found.");
     }
-    
-    # --- MODIFIED: ID Recycling Logic ---
 
     # 1. Collect all currently used task ID numbers.
     my %used_ids;
@@ -160,22 +192,21 @@ sub task_add {
     }
 
     my $new_task_id = "T$next_id_num";
-    # The old 'next_task_id' counter is no longer used by this system.
 
-    # --- End ID Recycling Logic ---
-    
     push @{ $data->{active_tasks}{$nickname} }, {
         id          => $new_task_id,
         description => $task_desc,
         assigner_id => $msg->{author}{id},
         assigned_at => time(),
     };
-    $db->set('tasks', $data);
+
+    $self->db->set('tasks', $data);
     debug("-> Success: Assigned task $new_task_id to '$nickname'.");
     
     my $kid_id = $data->{kids}{$nickname};
     my $dm_message = "Hi! You've been assigned a new task:\n**$new_task_id: $task_desc**\n\n"
                    . "To complete it, type: `!tasks complete $new_task_id`";
+
     $self->discord->send_dm($kid_id, $dm_message);
     debug("-> Sent DM notification to kid ID '$kid_id'.");
     
@@ -185,13 +216,13 @@ sub task_add {
 
 sub task_del {
     my ($self, $msg, $task_id_to_remove) = @_;
+
     debug("Attempting to remove task ID '$task_id_to_remove'.");
     unless ($task_id_to_remove) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks del <Task_ID>` (e.g., T1)");
     }
 
-    my $db = Component::DBI->new();
-    my $data = get_task_data();
+    my $data = $self->get_task_data();
     my $task_found = 0;
 
     KID_LOOP: foreach my $nickname (keys %{ $data->{active_tasks} }) {
@@ -206,7 +237,7 @@ sub task_del {
     }
 
     if ($task_found) {
-        $db->set('tasks', $data);
+        $self->db->set('tasks', $data);
         $self->discord->send_message($msg->{'channel_id'}, "Removed task **$task_id_to_remove**.");
     } else {
         debug("-> Failure: Task ID '$task_id_to_remove' not found.");
@@ -214,15 +245,16 @@ sub task_del {
     }
 }
 
+
 sub task_complete {
     my ($self, $msg, $task_id_to_complete) = @_;
+    
     debug("Attempting to complete task ID '$task_id_to_complete'.");
     unless ($task_id_to_complete) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks complete <Task_ID>` (e.g., T1)");
     }
     
-    my $db = Component::DBI->new();
-    my $data = get_task_data();
+    my $data = $self->get_task_data();
     my $completer_id = $msg->{author}{id};
     debug("-> Completer Discord ID: '$completer_id'");
     
@@ -248,7 +280,7 @@ sub task_complete {
         my $completed_task = splice(@{ $data->{active_tasks}{$nickname} }, $task_index, 1);
         my $assigner_id = $completed_task->{assigner_id};
         debug("-> Found matching task for '$nickname'. Assigner ID: '$assigner_id'");
-        $db->set('tasks', $data);
+        $self->db->set('tasks', $data);
 
         $self->discord->send_message($msg->{'channel_id'}, "Great job! Task **$completed_task->{id}** marked as complete.");
         
@@ -266,7 +298,7 @@ sub task_list {
     my ($self, $msg) = @_;
     my $author_id = $msg->{author}{id};
     debug("Generating active task list for user $author_id");
-    my $data = get_task_data();
+    my $data = $self->get_task_data();
     
     # --- Determine which tasks to show ---
     my ($kid_nickname) = grep { $data->{kids}{$_} eq $author_id } keys %{ $data->{kids} };
@@ -314,31 +346,10 @@ sub task_list {
 }
 
 
-sub task_help {
-    my ($self, $msg) = @_;
-    debug("Displaying help message.");
-    my $help_text = << "HELP";
-**Task Manager Help**
-`!tasks kadd (ka) <Discord_ID> <nickname>` - Adds a user.
-`!tasks kdel (kd) <nickname>` - Removes a user.
-`!tasks add (a) <nickname> <description>` - Assigns a new task.
-`!tasks del (d) <Task_ID>` - Removes an active task by its unique ID.
-`!tasks complete (c) <Task_ID>` - Mark one of your own tasks as complete by its ID.
-`!tasks list (l)` - Shows all current, incomplete tasks.
-`!tasks remind (r)` - Manually sends reminders for all active tasks.
-`!tasks help (h)` - Shows this help message.
-HELP
-    $self->discord->send_message($msg->{'channel_id'}, $help_text);
-}
-
-# --- Timer for Reminders ---
-
-# In lib/Command/Tasks.pm
-
 sub send_reminders {
     my $self = shift;
     debug("Reminder timer fired.");
-    my $data = get_task_data();
+    my $data = $self->get_task_data();
     
     return unless %{ $data->{active_tasks} };
     debug("Found active tasks. Processing reminders...");
@@ -347,7 +358,6 @@ sub send_reminders {
         my $kid_id = $data->{kids}{$nickname};
         if (ref $data->{active_tasks}{$nickname} eq 'ARRAY') {
             foreach my $task (@{ $data->{active_tasks}{$nickname} }) {
-                # UPDATED: The reminder message now includes the command to complete the task.
                 my $dm_reminder = "Friendly reminder! You still have a task to complete:\n"
                                 . "**$task->{id}: $task->{description}**\n\n"
                                 . "To complete it, type: `!tasks complete $task->{id}`";
