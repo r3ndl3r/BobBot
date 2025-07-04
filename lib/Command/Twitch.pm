@@ -95,17 +95,21 @@ sub cmd_twitch {
     my $args    = lc $msg->{'content'}; # Lowercase everything for arg parsing.
        $args    =~ s/$pattern//i;
     my @args    = split /\s+/, $args;
-
     my $config  = $self->{'bot'}{'config'}{'twitch'};
-
     my ($arg, $streamer) = @args;
+
+    if (!@args) {
+        $self->discord->send_message($msg->{channel_id}, $self->usage);
+        return;
+    }
 
     if ($arg =~ /^a(dd)?$/ && $streamer)           { $self->add_streamer($discord, $channel, $msg, $streamer, $config);  return }
     if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { $self->del_streamer($discord, $channel, $msg, $streamer, $config);  return }
     if ($arg =~ /^l(ist)?$/)                       { $self->list_streamers($discord, $channel, $msg); return }
     if ($arg =~ /^t(ag)?$/ && $streamer)           { $self->tag($discord, $channel, $msg, $streamer);  return }
-    if ($args =~ /^h(elp)?$/)                      { $self->help($discord, $channel, $msg);  return }
     if ($args =~ /^r(efresh)?$/)                   { $discord->delete_message($msg->{'channel_id'}, $msg->{'id'}); $self->twitch(); return }
+
+    $self->discord->send_message($msg->{channel_id}, $self->usage);
 }
 
 
@@ -504,19 +508,6 @@ sub getProfile {
     }
 
     return 0;
-}
-
-
-sub help {
-    my ($self, $discord, $channel, $msg) = @_;
-    my $commands = <<EOF;
-Commands:
-!twitch add <streamer> - Add a streamer to Twitch alerts list.
-!twitch delete <streamer> - Remove a streamer from Twitch alerts list.
-!twitch list - List all streamers in Twitch alerts list.
-!twitch tag <streamer> - Toggle tagging for a streamer.
-EOF
-    $discord->send_message($channel, $commands);
 }
 
 
