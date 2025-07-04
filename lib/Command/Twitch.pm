@@ -16,8 +16,8 @@ our @EXPORT_OK = qw(cmd_twitch);
 
 
 has bot                 => ( is => 'ro' );
-has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
-has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
+has discord             => ( is => 'lazy',  builder => sub { shift->bot->discord } );
+has log                 => ( is => 'lazy',  builder => sub { shift->bot->log } );
 has name                => ( is => 'ro',    default => 'Twitch' );
 has access              => ( is => 'ro',    default => 0 );
 has timer_seconds       => ( is => 'ro',    default => 300 );
@@ -25,11 +25,12 @@ has description         => ( is => 'ro',    default => 'Twitch notification syst
 has pattern             => ( is => 'ro',    default => '^t(witch)? ?' );
 has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
 has usage               => ( is => 'ro',    default => 'https://bob.rendler.org/en/commands/twitch');
-has timer_sub           => ( is => 'ro',    default => sub 
-    { 
+has db                  => ( is => 'ro',    required => 1 );
+has timer_sub           => ( is => 'ro',    default => sub
+    {
         my $self = shift;
         Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->twitch }
-        ) 
+        )
     }
 );
 
@@ -40,22 +41,20 @@ sub debug { my $msg = shift; say "[TWITCH DEBUG] $msg" if $debug }
 
 
 sub twitchGet {
-    my $db      = Component::DBI->new();
-    my $twitch  = $db->get('twitch') || {};
+    my $self = shift;
+    my $twitch  = $self->db->get('twitch') || {};
 
     return $twitch;
 }
 
 
 sub twitchSet {
-    my $twitch = shift;
-    my $db     = Component::DBI->new();
-    
-    return $db->set('twitch', $twitch);
+    my ($self, $twitch) = @_;
+    return $self->db->set('twitch', $twitch);
 }
 
 
-sub cmd_twitch { 
+sub cmd_twitch {
     my ($self, $msg) = @_;
 
     my $discord = $self->discord;
@@ -68,16 +67,15 @@ sub cmd_twitch {
     my @args    = split /\s+/, $args;
 
     my $config  = $self->{'bot'}{'config'}{'twitch'};
-    
-    my ($arg, $streamer) = @args;
-    my @cmd = ($self, $discord, $channel, $msg, $streamer, $config);
 
-    if ($arg =~ /^a(dd)?$/ && $streamer)           { add_streamer(@cmd);  return }
-    if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { del_streamer(@cmd);  return }
-    if ($arg =~ /^l(ist)?$/)                       { list_streamers(@cmd); return }
-    if ($arg =~ /^t(ag)?$/ && $streamer)           { tag(@cmd);  return }
-    if ($args =~ /^h(elp)?$/)                      { help(@cmd);  return }
-    if ($args =~ /^r(efresh)?$/)                   { $discord->delete_message($msg->{'channel_id'}, $msg->{'id'}); twitch(@_) }
+    my ($arg, $streamer) = @args;
+
+    if ($arg =~ /^a(dd)?$/ && $streamer)           { $self->add_streamer($discord, $channel, $msg, $streamer, $config);  return }
+    if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { $self->del_streamer($discord, $channel, $msg, $streamer, $config);  return }
+    if ($arg =~ /^l(ist)?$/)                       { $self->list_streamers($discord, $channel, $msg); return }
+    if ($arg =~ /^t(ag)?$/ && $streamer)           { $self->tag($discord, $channel, $msg, $streamer);  return }
+    if ($args =~ /^h(elp)?$/)                      { $self->help($discord, $channel, $msg);  return }
+    if ($args =~ /^r(efresh)?$/)                   { $discord->delete_message($msg->{'channel_id'}, $msg->{'id'}); $self->twitch(); return }
 }
 
 
@@ -86,17 +84,17 @@ sub twitch {
     my $discord = $self->discord;
     my $config  = $self->{'bot'}{'config'}{'twitch'};
 
-    my $twitch  = twitchGet();
+    my $twitch  = $self->twitchGet();
     my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
 
     for my $streamer (@streams) {
-        my $topic = getStream($streamer, $config);
+        my $topic = $self->getStream($streamer, $config);
         debug "ONLINE: $streamer - $topic" if $topic;
 
         if ($topic) {
-            stream_online($self, $discord, $config, $streamer, $topic, $twitch);
+            $self->stream_online($discord, $config, $streamer, $topic, $twitch);
         } else {
-            stream_offline($discord, $config, $streamer, $twitch);
+            $self->stream_offline($discord, $config, $streamer, $twitch);
         }
     }
 }
@@ -107,7 +105,7 @@ sub stream_online {
 
     if ($twitch->{$streamer}{'msgID'} && $twitch->{$streamer}{'topic'} ne $topic) {
         debug "TOPIC CHANGED: $streamer - $topic";
-    
+
         $discord->get_message($config->{'channel'}, $twitch->{$streamer}{'msgID'}, sub {
             my $msg = shift;
 
@@ -119,22 +117,22 @@ sub stream_online {
 
     } elsif (!$twitch->{$streamer}{'msgID'}) { # Streamer does not already have a message. Send alert.
 
-        send_streamer_message($self, $discord, $config, $streamer, $topic, $twitch);
+        $self->send_streamer_message($discord, $config, $streamer, $topic, $twitch);
     }
 
     $twitch->{$streamer}{'topic'} = $topic;
-    twitchSet($twitch);
+    $self->twitchSet($twitch);
 }
 
 
 sub stream_offline {
-    my ($discord, $config, $streamer, $twitch) = @_;
+    my ($self, $discord, $config, $streamer, $twitch) = @_;
 
     if ($twitch->{$streamer}{'msgID'}) {
         $discord->delete_message($config->{'channel'}, $twitch->{$streamer}{'msgID'});
         delete $twitch->{$streamer}{'msgID'};
         delete $twitch->{$streamer}{'topic'};
-        twitchSet($twitch);
+        $self->twitchSet($twitch);
     }
 }
 
@@ -149,19 +147,19 @@ sub send_streamer_message {
     } else {
         $msg = "Streamer `$streamer` is online.";
     }
-    
+
     # Streamer is online but no message exists. Create a new message.
     my $time = localtime;
-    my $embed = {   
-        'embeds' => [ 
-            {   
+    my $embed = {
+        'embeds' => [
+            {
                 'author' => {
                     'name'     => $streamer,
                     'url'      => "https://www.twitch.tv/$streamer",
                     'icon_url' => 'https://pbs.twimg.com/profile_images/1450901581876973568/0bHBmqXe_400x400.png',
                 },
                 'thumbnail' => {
-                    'url'   => getProfile($self, $streamer),
+                    'url'   => $self->getProfile($streamer),
                 },
                 'title'       => 'Twitch Alert',
                 'description' => "$msg\n",
@@ -182,11 +180,11 @@ sub send_streamer_message {
                         'value' => $time,
                     },
                 ],
-            } 
+            }
         ]
     };
 
-    
+
     my @tags = exists $twitch->{$streamer}{'tags'} ? keys %{ $twitch->{$streamer}{'tags'} } : ();
     if (@tags) {
         my @tagsMsg = map { '<@' . $_ . '>' } @tags;
@@ -197,21 +195,21 @@ sub send_streamer_message {
             $discord->send_dm($_, $embed);
         }
     }
-    
-    $twitch->{$streamer}{'lastOn'} = time; 
-    $discord->send_message($config->{'channel'}, $embed, sub { $twitch->{$streamer}{'msgID'} = shift->{'id'}; twitchSet($twitch) } );
+
+    $twitch->{$streamer}{'lastOn'} = time;
+    $discord->send_message($config->{'channel'}, $embed, sub { $twitch->{$streamer}{'msgID'} = shift->{'id'}; $self->twitchSet($twitch) } );
 }
 
 
 sub add_streamer {
-    my ($self, $discord, $channel, $msg, $streamer) = @_;
+    my ($self, $discord, $channel, $msg, $streamer, $config) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
         $discord->send_message($channel, "The streamer `$streamer` is not valid.");
-        return;            
+        return;
     }
 
-    my $twitch  = twitchGet();
+    my $twitch  = $self->twitchGet();
     my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
 
     # Check to see if stream already exists.
@@ -223,17 +221,18 @@ sub add_streamer {
         }
     }
 
-    unless ( validChannel($self, $streamer) ) {
+    unless ( $self->validChannel($streamer) ) {
         $discord->send_message($channel, "Streamer `$streamer` is not a valid.");
         $self->bot->react_error($channel, $msg->{'id'});
         return;
     }
 
     $twitch->{$streamer} = {};
-    twitchSet($twitch);
+    $self->twitchSet($twitch);
 
     $discord->send_message($channel, "Added `$streamer` to Twitch alerts list.");
     $self->bot->react_robot($channel, $msg->{'id'});
+    $self->twitch();
 }
 
 
@@ -241,12 +240,12 @@ sub del_streamer {
     my ($self, $discord, $channel, $msg, $streamer, $config) = @_;
 
     unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "Streamer `$streamer` is not valid.");
+        $discord->send_message($channel, "The streamer `$streamer` is not valid.");
         $self->bot->react_error($channel, $msg->{'id'});
         return;
     }
 
-    my $twitch  = twitchGet();
+    my $twitch  = $self->twitchGet();
     my @streams = keys %$twitch;
 
     for my $s (@streams) {
@@ -258,7 +257,7 @@ sub del_streamer {
 
             # Delete the streamer from the list
             delete $twitch->{$streamer};
-            twitchSet($twitch);
+            $self->twitchSet($twitch);
             $discord->send_message($channel, "Deleted `$streamer` from alerts list.");
             $self->bot->react_robot($channel, $msg->{'id'});
 
@@ -273,7 +272,7 @@ sub del_streamer {
 
 sub list_streamers {
     my ($self, $discord, $channel, $msg) = @_;
-    my $twitch  = twitchGet();
+    my $twitch  = $self->twitchGet();
     my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
 
     if (!@streams) {
@@ -287,13 +286,13 @@ sub list_streamers {
 
 
 sub tag {
-    my ($self, $discord, $channel, $msg, $streamer) = @_;       
+    my ($self, $discord, $channel, $msg, $streamer) = @_;
     my $uID       = $msg->{'author'}->{'id'};
-    my $twitch    = twitchGet();
+    my $twitch    = $self->twitchGet();
     my @streams   = ref $twitch eq 'HASH' ? keys %$twitch : ();
     my %streamers = map { $_ => 1 } @streams;
 
-    
+
 
     if ($streamer =~ /^l(ist)?$/) {
         my @tagged;
@@ -307,7 +306,7 @@ sub tag {
         } else {
             $discord->send_message($channel, "<\@$uID> you don't have tagging enabled for anybody.");
         }
-        
+
         $self->bot->react_robot($channel, $msg->{'id'});
         return;
     }
@@ -316,11 +315,11 @@ sub tag {
         if ($twitch->{$streamer}{'tags'}{$uID}) {
             delete $twitch->{$streamer}{'tags'}{$uID};
             $discord->send_message($channel, "<\@$uID> Twitch tagging removed for `$streamer`.");
-            twitchSet($twitch);
+            $self->twitchSet($twitch);
         } else {
             $twitch->{$streamer}{'tags'}{$uID} = 1;
             $discord->send_message($channel, "<\@$uID> Twitch tagging added for `$streamer`.");
-            twitchSet($twitch);
+            $self->twitchSet($twitch);
         }
         $self->bot->react_robot($channel, $msg->{'id'});
     } else {
@@ -336,7 +335,7 @@ sub validChannel {
 
     # Get the necessary config and authentication token.
     my $config = $self->bot->config->{twitch};
-    my $oauth_token = get_or_generate_oauth_token($config);
+    my $oauth_token = $self->get_or_generate_oauth_token($config);
 
     my $url = "https://api.twitch.tv/helix/users?login=$streamer";
     my $ua = LWP::UserAgent->new;
@@ -352,21 +351,20 @@ sub validChannel {
         # The 'data' array will contain a user object if the user is valid.
         # If the user does not exist, the array will be empty.
         if (ref $json->{data} eq 'ARRAY' && @{ $json->{data} }) {
-            return 1; # User is valid
+            return 1;
         }
     } else {
-        # Pass the response to the existing error handler.
-        handle_error($res, $config, $streamer);
+        $self->handle_error($res, $config, $streamer);
     }
-    
-    return 0; # User is not valid or an error occurred
+
+    return 0;
 }
 
 
 sub getStream {
-    my ($stream, $config) = @_;
+    my ($self, $stream, $config) = @_;
 
-    my $oauth_token = get_or_generate_oauth_token($config);
+    my $oauth_token = $self->get_or_generate_oauth_token($config);
 
     my $url = "https://api.twitch.tv/helix/streams?user_login=$stream";
     my $ua = LWP::UserAgent->new;
@@ -380,24 +378,24 @@ sub getStream {
         my $json = from_json($res->content);
         return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
     } else {
-        handle_error($res, $config, $stream);
+        $self->handle_error($res, $config, $stream);
         return 0;
     }
 }
 
 
 sub get_or_generate_oauth_token {
-    my ($config) = @_;
+    my ($self, $config) = @_;
 
-    my $db = Component::DBI->new();
-    my $token = ${ $db->get('twitch.oauth') } || undef;
+    my $token = ${ $self->db->get('twitch.oauth') } || undef;
 
     # Generate new token if missing or empty
     unless ($token) {
         debug "No valid OAuth token found, generating new one.";
-        $token = generate_oauth_token($config);
-        if ($token) {
-            $db->set('twitch.oauth', \$token);
+        my $new_token = $self->generate_oauth_token($config);
+        if ($new_token) {
+            $self->db->set('twitch.oauth', \$new_token);
+            $token = $new_token;
         } else {
             say "[TWITCH DEBUG] Failed to generate OAuth token: get_or_generate_oauth_token().";
         }
@@ -408,9 +406,8 @@ sub get_or_generate_oauth_token {
 
 
 sub generate_oauth_token {
+    my ($self, $config) = @_;
     debug "Generating new OAuth token.";
-
-    my ($config) = @_;
 
     my $ua = LWP::UserAgent->new;
     my $res = $ua->post(
@@ -428,24 +425,21 @@ sub generate_oauth_token {
         return ($content =~ /"access_token":"([^"]+)"/)[0] if $content =~ /"access_token":"([^"]+)"/;
     }
 
-    say "[TWITCH DEBUG] Failed to generate OAuth token: " . $res->status_line . " rate_oauth_token().";
+    say "[TWITCH DEBUG] Failed to generate OAuth token: " . $res->status_line . " generate_oauth_token().";
 
     return undef;
 }
 
 
 sub handle_error {
-    my ($res, $config, $stream) = @_;
+    my ($self, $res, $config, $stream) = @_;
 
     if ($res->code == 401) {
-        say "Invalid OAuth token.";
+        say "[TWITCH DEBUG] Invalid OAuth token.";
 
-        my $oauth_token = generate_oauth_token($config);
+        my $oauth_token = $self->generate_oauth_token($config);
         if ($oauth_token) {
-            $config->{'oauth'} = $oauth_token;
-            # The get_or_generate_oauth_token function will handle saving the new token
-            # on the next run, so this function only needs to retry the API call.
-            return getStream($stream, $config);
+            return $self->getStream($stream, $config);
         } else {
             say "[TWITCH DEBUG] Failed to get OAuth token: " . $res->status_line . " handle_error().";
         }
@@ -459,7 +453,7 @@ sub getProfile {
     my ($self, $streamer) = @_;
     my $config = $self->bot->config->{twitch};
 
-    my $oauth_token = get_or_generate_oauth_token($config);
+    my $oauth_token = $self->get_or_generate_oauth_token($config);
 
     my $url = "https://api.twitch.tv/helix/users?login=$streamer";
     my $ua = LWP::UserAgent->new;
@@ -471,17 +465,15 @@ sub getProfile {
 
     if ($res->is_success) {
         my $json = from_json($res->content);
-        # Check if data array exists and is not empty
         if (ref $json->{data} eq 'ARRAY' && @{ $json->{data} }) {
             return $json->{data}[0]{profile_image_url};
         }
     } else {
-        # Handle API errors, e.g., token invalid or network issue
-        say "[TWITCH DEBUG] Failed to get profile for $streamer: " . $res->status_line . " " . $res->content . " getProild().";
-        handle_error($res, $config, $streamer); # Reuse existing error handler
+        say "[TWITCH DEBUG] Failed to get profile for $streamer: " . $res->status_line . " " . $res->content . " getProfile().";
+        $self->handle_error($res, $config, $streamer);
     }
 
-    return 0; # Return 0 or undef on failure
+    return 0;
 }
 
 
