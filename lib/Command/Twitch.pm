@@ -22,7 +22,7 @@ has name                => ( is => 'ro',    default => 'Twitch' );
 has access              => ( is => 'ro',    default => 0 );
 has timer_seconds       => ( is => 'ro',    default => 300 );
 has description         => ( is => 'ro',    default => 'Twitch notification system.' );
-has pattern             => ( is => 'ro',    default => '^t(witch)? ?' );
+has pattern             => ( is => 'ro',    default => '^tw(itch)? ?' );
 has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
 has usage               => ( is => 'ro',    default => <<~'EOF'
     **Twitch Alerts Command Help**
