@@ -217,6 +217,8 @@ sub format_weather_embed {
         $current_details .= "\nChance of Rain: **$today_pop_percent%**.";
     }
 
+    my $location_local_time = strftime("%a %b %d %I:%M:%S %p %Y", gmtime($current->{dt} + $data->{timezone_offset}));
+
     my $embed = {
         author => { name => "Weather for $city_name", icon_url => $icon_url },
         title => "$current_emoji $description, $current_temp°C",
@@ -224,8 +226,10 @@ sub format_weather_embed {
         color => 0x3498DB,
         fields => [],
         footer => { 
-            text => sprintf("Last updated: %s\nUpdating every: %s minutes.", 
+            text => sprintf("Last updated: %s\nLocal time of %s: %s\nUpdating every: %s minutes.", 
                             strftime("%a %b %d %I:%M:%S %p %Y", localtime), 
+                            $city_name, # Changed from "location" to $city_name
+                            $location_local_time,
                             $self->timer_seconds / 60)
         }
     };
