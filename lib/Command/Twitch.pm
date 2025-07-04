@@ -9,7 +9,6 @@ use namespace::clean;
 use LWP::UserAgent;
 use JSON;
 use Date::Parse;
-use Component::DBI;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_twitch);
@@ -18,13 +17,13 @@ our @EXPORT_OK = qw(cmd_twitch);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy',  builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy',  builder => sub { shift->bot->log } );
+has db                  => ( is => 'ro',    required => 1 );
 has name                => ( is => 'ro',    default => 'Twitch' );
 has access              => ( is => 'ro',    default => 0 );
 has timer_seconds       => ( is => 'ro',    default => 300 );
 has description         => ( is => 'ro',    default => 'Twitch notification system.' );
 has pattern             => ( is => 'ro',    default => '^t(witch)? ?' );
 has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
-has db                  => ( is => 'ro',    required => 1 );
 has usage               => ( is => 'ro',    default => <<~'EOF'
     **Twitch Alerts Command Help**
 
@@ -57,7 +56,7 @@ has usage               => ( is => 'ro',    default => <<~'EOF'
     EOF
 );
 
-has timer_sub           => ( is => 'ro',    default => sub
+has timer_sub => ( is => 'ro',    default => sub
     {
         my $self = shift;
         Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->twitch }
