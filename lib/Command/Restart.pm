@@ -5,10 +5,9 @@ use utf8;
 use Moo;
 use strictures 2;
 use namespace::clean;
-use Component::DBI;
 
 use Exporter qw(import);
-our @EXPORT_OK = qw(cmd_bob);
+our @EXPORT_OK = qw(cmd_restart);
 
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
@@ -20,14 +19,17 @@ has pattern             => ( is => 'ro', default => '^restart ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_restart } );
 has usage               => ( is => 'ro', default => '!restart' );
 
+
 sub cmd_restart {
     my ($self, $msg) = @_;
     
     my $channel = $msg->{'channel_id'};
     my $discord = $self->discord;
 
+    $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
     $discord->send_message($channel, "OK", sub { exit });
-    $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
+
 }
+
 
 1;
