@@ -24,8 +24,39 @@ has timer_seconds       => ( is => 'ro',    default => 300 );
 has description         => ( is => 'ro',    default => 'Twitch notification system.' );
 has pattern             => ( is => 'ro',    default => '^t(witch)? ?' );
 has function            => ( is => 'ro',    default => sub { \&cmd_twitch } );
-has usage               => ( is => 'ro',    default => 'https://bob.rendler.org/en/commands/twitch');
 has db                  => ( is => 'ro',    required => 1 );
+has usage               => ( is => 'ro',    default => <<~'EOF'
+    **Twitch Alerts Command Help**
+
+    This command allows you to manage Twitch streamer alerts.
+    When a streamer goes live, the bot will post a notification in the configured channel.
+
+    `!twitch add <streamer_username>`
+    Adds a Twitch streamer to the alert list. The bot will monitor this streamer's status.
+    *Example:* `!twitch add shroud`
+
+    `!twitch remove <streamer_username>`
+    Removes a Twitch streamer from the alert list.
+    *Example:* `!twitch remove summit1g`
+
+    `!twitch list`
+    Displays all streamers currently being monitored for alerts.
+
+    `!twitch tag <streamer_username>`
+    Toggles personal Direct Message (DM) alerts for a specific streamer. If enabled, you will receive a DM when that streamer goes live.
+    *Example:* `!twitch tag cdawg`
+
+    `!twitch tag list`
+    Displays all streamers for whom you have personal DM alerts enabled.
+
+    `!twitch refresh`
+    Manually triggers an immediate check for all monitored streamers. Useful if you want to force an update.
+
+    `!twitch help`
+    Displays this detailed help message.
+    EOF
+);
+
 has timer_sub           => ( is => 'ro',    default => sub
     {
         my $self = shift;
