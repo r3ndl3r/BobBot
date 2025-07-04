@@ -7,7 +7,6 @@ use strictures 2;
 use namespace::clean;
 
 use JSON;
-use Component::DBI;
 use Mojo::Promise;
 
 use Exporter qw(import);
@@ -16,19 +15,15 @@ our @EXPORT_OK = qw(cmd_cursed);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-has db                  => ( is => 'lazy', builder => sub { Component::DBI->new() } );
-
+has db                  => ( is => 'ro', required => 1 ); 
 has name                => ( is => 'ro', default => 'Cursed' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Rando cursed shit' );
 has pattern             => ( is => 'ro', default => '^cursed ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_cursed } );
-has usage               => ( is => 'ro', default => <<EOF
-Usage: !cursed
-EOF
-);
+has usage               => ( is => 'ro', default => 'Usage: !cursed' );
 
-my $debug = 1;
+my $debug = 0;
 sub debug { my $msg = shift; say "[CURSED DEBUG] $msg" if $debug }
 
 sub cmd_cursed {
@@ -45,7 +40,6 @@ sub cmd_cursed {
     # Use Mojo::UserAgent for non-blocking fetch
     $self->discord->rest->ua->get_p($url)->then(sub {
         my $tx = shift;
-        my $db = $self->db;
 
         unless ($tx->res->is_success) {
             debug("Failed to fetch cursed images: " . $tx->res->status_line);
@@ -88,7 +82,7 @@ sub cmd_cursed {
         }
 
         my $cursed_to_send;
-        my %cursed_seen = %{ $db->get('cursed') || {} };
+        my %cursed_seen = %{ $self->db->get('cursed') || {} };
         debug("Existing cursed images in DB: " . (scalar keys %cursed_seen));
 
         my $found_unique = 0;
@@ -113,10 +107,10 @@ sub cmd_cursed {
         unless ($found_unique) {
             $cursed_to_send = $available_urls[int(rand(scalar @available_urls))];
             $discord->send_message($channel, "I've run out of *new* cursed images! Here's a random one I've sent before. (History cleared)");
-            $db->set('cursed', {});
+            $self->db->set('cursed', {});
             debug("No unique image found after $max_attempts tries, falling back to a random one: $cursed_to_send. History reset.");
         } else {
-            $db->set('cursed', \%cursed_seen);
+            $self->db->set('cursed', \%cursed_seen);
             debug("Saving updated cursed image list to DB.");
         }
 
