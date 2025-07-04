@@ -11,6 +11,7 @@ use Config::Tiny;
 use Term::ANSIColor;
 use File::Find;
 use Cwd 'abs_path';
+use Component::DBI;
 
 binmode STDOUT, ":utf8";
 
@@ -20,6 +21,8 @@ print "\n" . localtime . color('green') . " STARTING MOFO\n" . color('reset');
 my $config_file = $ARGV[0] // 'config.ini';
 my $config = Config::Tiny->read($config_file, 'utf8');
 say localtime(time) . " Loaded Config: $config_file";
+
+my $dbh_instance = Component::DBI->new();
 
 # Initialize the bot
 my $bot = Bot::Bobbot->new('config' => $config);
@@ -45,7 +48,7 @@ find(sub {
     if ($@) {
         warn "Failed to load module $module: $@";
     } else {
-        $bot->add_command( $class->new( 'bot' => $bot ) );
+        $bot->add_command( $class->new( 'bot' => $bot, 'db' => $dbh_instance ) );
     }
 
 }, $dir);
