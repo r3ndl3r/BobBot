@@ -5,7 +5,6 @@ use utf8;
 use Moo;
 use strictures 2;
 use namespace::clean;
-use Component::DBI;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_del);
@@ -13,6 +12,7 @@ our @EXPORT_OK = qw(cmd_del);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
+has db                  => ( is => 'ro',    required => 1 );
 has name                => ( is => 'ro', default => 'Delete' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Delete messages.' );
@@ -27,8 +27,7 @@ has timer_sub => ( is => 'ro', default =>
         # This timer processes one message every 3 seconds.
         Mojo::IOLoop->recurring( 3 =>
             sub {
-                my $db = Component::DBI->new();
-                my $deletion_queue = $db->get('del.all') || {};
+                my $deletion_queue = $self->db->get('del.all') || {};
 
                 return unless %$deletion_queue;
                 
@@ -45,11 +44,11 @@ has timer_sub => ( is => 'ro', default =>
                 
                 # If the queue for that channel is now empty, fetch the next batch.
                 if ( !@{ $deletion_queue->{$channel} } ) {
-                    get_chan_msg($self->discord, $channel, $deletion_queue);
+                    get_chan_msg($self, $channel, $deletion_queue);
                 }
                 
                 # Save the updated queue (with the one message removed) back to the database.
-                $db->set('del.all', $deletion_queue);
+                $self->db->set('del.all', $deletion_queue);
             }
         ) 
     }
@@ -71,10 +70,9 @@ sub cmd_del {
 
     # !del all stop
     if ($args eq 'all stop') {
-        my $db = Component::DBI->new();
         # To stop the process, we clear the deletion queue in the database.
         # The timer will find an empty queue on its next tick and do nothing.
-        $db->set('del.all', {});
+        $self->db->set('del.all', {});
         $discord->send_message($command_channel_id, "The bulk deletion queue has been cleared.");
     
     # !del all <channel_id>
@@ -155,9 +153,8 @@ sub cmd_del {
         }
 
         # If all checks pass, start the bulk delete process by populating the queue.
-        my $db = Component::DBI->new();
-        my $deletion_queue = $db->get('del.all') || {};
-        get_chan_msg($discord, $target_channel_id, $deletion_queue);
+        my $deletion_queue = $self->db->get('del.all') || {};
+        get_chan_msg($self, $target_channel_id, $deletion_queue);
     }
     
     # Delete the user's original command message to keep the channel clean.
@@ -166,12 +163,11 @@ sub cmd_del {
 
 
 sub get_chan_msg {
-    my ($discord, $channel, $deletion_queue) = @_;
+    my ($self, $channel, $deletion_queue) = @_;
     
-    $discord->get_channel_messages($channel,
+    $self->discord->get_channel_messages($channel,
         sub {
             my $messages = shift;
-            my $db = Component::DBI->new();
 
             if (@$messages) {
                 # Store message IDs in an array to preserve order (newest first).
@@ -181,7 +177,7 @@ sub get_chan_msg {
                 delete $deletion_queue->{$channel};
             }
 
-            $db->set('del.all', $deletion_queue);
+            $self->db->set('del.all', $deletion_queue);
         }
     );
 }
