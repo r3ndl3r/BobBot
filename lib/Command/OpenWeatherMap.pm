@@ -19,10 +19,10 @@ has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has db                  => ( is => 'ro', required => 1 );
 has name                => ( is => 'ro', default => 'OpenWeatherMap' );
 has access              => ( is => 'ro', default => 1 );
+has timer_seconds       => ( is => 'ro', default => 3600 );
 has description         => ( is => 'ro', default => 'Weather forecasting via OpenWeatherMap.' );
 has pattern             => ( is => 'ro', default => '^weather ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_weather_router } );
-has timer_seconds       => ( is => 'ro', default => 3600 );
 has usage               => ( is => 'ro', default => <<~'EOF'
     **Weather Command Help**
 
