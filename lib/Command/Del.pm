@@ -44,7 +44,7 @@ has timer_sub => ( is => 'ro', default =>
                 
                 # If the queue for that channel is now empty, fetch the next batch.
                 if ( !@{ $deletion_queue->{$channel} } ) {
-                    get_chan_msg($self, $channel, $deletion_queue);
+                    $self->get_chan_msg($channel, $deletion_queue);
                 }
                 
                 # Save the updated queue (with the one message removed) back to the database.
@@ -154,7 +154,7 @@ sub cmd_del {
 
         # If all checks pass, start the bulk delete process by populating the queue.
         my $deletion_queue = $self->db->get('del.all') || {};
-        get_chan_msg($self, $target_channel_id, $deletion_queue);
+        $self->get_chan_msg($target_channel_id, $deletion_queue);
     }
     
     # Delete the user's original command message to keep the channel clean.
