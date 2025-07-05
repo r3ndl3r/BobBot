@@ -320,7 +320,7 @@ sub check_ozbargains {
                     $sth_insert->execute($item->{'link'});
                     debug("check_ozbargains: Logged deal link: " . $item->{'link'} . " after sending to channel.");
                 } else {
-                    debug("check_ozbargains: Failed to send deal message for '" . $item->{'title'} . "': " . Dumper($sent_msg));
+                    debug("check_ozbargains: Failed to send deal message for '" . $item->{'title'} . "': " . Data::Dumper::Dumper($sent_msg));
                 }
             }
         );
