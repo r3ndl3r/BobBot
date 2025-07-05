@@ -11,6 +11,10 @@ use Mojo::IOLoop;
 use Time::Duration;
 use namespace::clean;
 
+my $debug = 0;
+sub debug { my $msg = shift; say $msg if $debug }
+
+
 has permissions => ( is => 'ro', default => sub {
         {
             'CREATE_INSTANT_INVITE' => 0x00000001,
@@ -431,6 +435,100 @@ sub react_robot {
 sub react_error {
     my ($self, $channel_id, $message_id) = @_;
     $self->discord->create_reaction($channel_id, $message_id, "🛑");
+}
+
+
+# File: lib/Bot/Bobbot.pm
+
+# Add a new subroutine to handle sending messages longer than Discord's limit
+sub send_long_message {
+    my ($self, $channel_id, $payload) = @_;
+    debug("[Bot::Bobbot.pm] [send_long_message] Attempting to send message to channel: $channel_id");
+
+    my $discord = $self->discord;
+    my $max_text_length = 1900; # Max Discord message content is 2000, keep it under for safety and markdown.
+
+    my $promise = Mojo::Promise->new; # This promise will be returned and resolved/rejected
+
+    # If the payload is a plain string
+    if (ref $payload eq '') { # It's a scalar (string)
+        debug("[Bot::Bobbot.pm] [send_long_message] Payload is a plain string. Length: " . length($payload));
+        if (length($payload) <= $max_text_length) {
+            # For short messages, send directly and resolve immediately
+            $discord->send_message($channel_id, $payload, sub {
+                my $response = shift;
+                if (ref $response eq 'HASH' && $response->{id}) {
+                    debug("[Bot::Bobbot.pm] [send_long_message] Short message sent directly (success).");
+                    $promise->resolve(1);
+                } else {
+                    $self->log->error("[Bot::Bobbot.pm] [send_long_message] Failed to send short message: " . Dumper($response));
+                    $promise->reject("Failed to send short message: " . Dumper($response));
+                }
+            });
+            return $promise;
+        } else {
+            # Split the string message into chunks using the robust 4-argument substr
+            my @chunks;
+            my $remaining_text = $payload;
+            # This loop extracts a chunk and removes it from $remaining_text simultaneously.
+            # It will terminate correctly when $remaining_text becomes empty.
+            while (my $chunk = substr($remaining_text, 0, $max_text_length, '')) {
+                push @chunks, $chunk;
+            }
+
+            my $index = 0;
+            my $send_next_chunk; # Declare a recursive coderef for lexical scope
+
+            $send_next_chunk = sub {
+                if ($index < scalar @chunks) {
+                    my $formatted_chunk = $chunks[$index];
+                    my $chunk_num_info = ($#chunks > 0) ? " (Part " . ($index + 1) . "/" . ($#chunks + 1) . ")" : "";
+                    debug("[Bot::Bobbot.pm] [send_long_message] Sending chunk " . ($index + 1) . " of " . (scalar @chunks) . $chunk_num_info . ".");
+
+                    $discord->send_message($channel_id, $formatted_chunk, sub {
+                        my $response = shift; # This is the response from Discord for this specific message.
+                        if (ref $response eq 'HASH' && $response->{id}) {
+                            debug("[Bot::Bobbot.pm] [send_long_message] Successfully sent chunk " . ($index + 1) . ".");
+                            $index++;
+                            # Schedule the next chunk send with a small delay
+                            Mojo::IOLoop->timer(0.5 => $send_next_chunk); # 0.5 second delay between chunks
+                        } else {
+                            # If a chunk fails to send, reject the main promise
+                            $self->log->error("[Bot::Bobbot.pm] [send_long_message] Failed to send chunk " . ($index + 1) . ": " . Dumper($response));
+                            $promise->reject("Failed to send message chunk: " . Dumper($response));
+                        }
+                    });
+                } else {
+                    debug("[Bot::Bobbot.pm] [send_long_message] All message chunks sent successfully.");
+                    $promise->resolve(1); # All chunks sent successfully
+                }
+            };
+
+            # Start the chunk sending process
+            $send_next_chunk->();
+
+            return $promise; # Return the promise for the caller to chain.
+        }
+    } elsif (ref $payload eq 'HASH') { # It's likely an embed or other structured payload
+        debug("[Bot::Bobbot.pm] [send_long_message] Payload is a HASH (embed/structured). Sending directly.");
+        # Assuming the embed generation/validation in the respective command already handles its internal lengths.
+        # Discord API handles embed max lengths internally. We just pass it through.
+        $discord->send_message($channel_id, $payload, sub {
+            my $response = shift;
+            if (ref $response eq 'HASH' && $response->{id}) {
+                debug("[Bot::Bobbot.pm] [send_long_message] Structured payload sent directly (success).");
+                $promise->resolve(1);
+            } else {
+                $self->log->error("[Bot::Bobbot.pm] [send_long_message] Failed to send structured payload: " . Dumper($response));
+                $promise->reject("Failed to send structured payload: " . Dumper($response));
+            }
+        });
+        return $promise;
+    } else {
+        $self->log->warn("[Bot::Bobbot.pm] [send_long_message] Received unknown payload type: " . ref($payload));
+        $promise->reject("Received unsupported message format to send.");
+        return $promise;
+    }
 }
 
 
