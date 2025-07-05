@@ -7,7 +7,6 @@ use strictures 2;
 use namespace::clean;
 
 use Time::Duration;
-use Data::Dumper;
 use POSIX qw(strftime);
 
 has bot           => ( is => 'ro' );
@@ -54,6 +53,7 @@ has usage         => ( is => 'ro', default => <<~'EOF'
     EOF
 );
 
+
 has timer_sub     => ( is => 'ro', default => sub { 
         my $self = shift;
         Mojo::IOLoop->recurring( 600 => sub { $self->send_reminders } );
@@ -61,14 +61,75 @@ has timer_sub     => ( is => 'ro', default => sub {
 );
 
 
+has on_message => ( is => 'ro', default => sub {
+        my $self = shift;
+        $self->discord->gw->on('INTERACTION_CREATE' => sub {
+            my ($gw, $interaction) = @_;
+            return unless (ref $interaction->{data} eq 'HASH' && $interaction->{data}{custom_id});
+            my $custom_id = $interaction->{data}{custom_id};
+
+            # Check if the button click is for a task completion
+            if ($custom_id =~ /^task_complete_(\S+)$/) {
+                my $task_id_from_button = $1;
+                debug("-> 'Mark Complete' button clicked for task $task_id_from_button by user " . ($interaction->{member}{user}{username} // $interaction->{user}{username} // 'Unknown'));
+
+                my $completer_id;
+                # Try getting ID from member (typically for guild interactions)
+                if (defined $interaction->{member} && ref $interaction->{member} eq 'HASH' &&
+                    defined $interaction->{member}{user} && ref $interaction->{member}{user} eq 'HASH' &&
+                    defined $interaction->{member}{user}{id}) {
+                    $completer_id = $interaction->{member}{user}{id};
+                    debug("-> Got completer ID from member/user: $completer_id.");
+                }
+                # Fallback to getting ID directly from user (typically for DM interactions)
+                elsif (defined $interaction->{user} && ref $interaction->{user} eq 'HASH' &&
+                       defined $interaction->{user}{id}) {
+                    $completer_id = $interaction->{user}{id};
+                    debug("-> Got completer ID directly from user: $completer_id.");
+                }
+
+                unless (defined $completer_id) {
+                    debug("-> ERROR: Could not determine completer's user ID from interaction. Interaction payload: " . Data::Dumper::Dumper($interaction));
+                    $self->discord->interaction_response($interaction->{id}, $interaction->{token}, { type => 4, data => { content => "Error: Could not identify your user ID to complete the task. Please try again later." } });
+                    return;
+                }
+
+                # Acknowledge the interaction to prevent "This interaction failed" error
+                # Type 6 (DEFERRED_UPDATE_MESSAGE) means we'll modify the original message later.
+                $self->discord->interaction_response($interaction->{id}, $interaction->{token}, { type => 6 }, sub {
+                    # Simulate a message structure that task_complete expects
+                    my $mock_msg = {
+                        channel_id => $interaction->{channel_id}, # This will be the DM channel ID
+                        author     => { id => $completer_id }, # Use the safely determined ID
+                        content    => "!tasks complete $task_id_from_button", # Simulate the command input
+                        id         => $interaction->{message}{id}, # The ID of the original message with the button
+                    };
+                    $self->task_complete($mock_msg, $task_id_from_button);
+
+                    # After processing, disable the button on the original message
+                    $self->discord->get_message($interaction->{channel_id}, $interaction->{message}{id}, sub {
+                        my $original_msg = shift;
+                        if (ref $original_msg eq 'HASH') {
+                            # Clear components to disable all buttons in the message
+                            $original_msg->{components} = [];
+                            $self->discord->edit_message($interaction->{channel_id}, $interaction->{message}{id}, $original_msg);
+                        }
+                    });
+                });
+            }
+        });
+    }
+);
+
+
 my $debug = 0;
-sub debug { my $msg = shift; say "[Tasks DEBUG] $msg" if $debug }
+sub debug { say "[TASKS DEBUG] $_[0]" if ($debug > 0 && !$_[1]) || ($debug == 2 && $_[1]) }
 
 # Helper function to safely load and initialize the data structure.
 sub get_task_data {
     my $self = shift;
     my $data = $self->db->get('tasks') || {};
-    #debug("Loading data from DB: " . Dumper($data));
+    debug("Loading data from DB: " . Data::Dumper::Dumper($data), 2);
 
     # Ensure all top-level keys are initialized correctly.
     $data->{kids} //= {};
@@ -102,7 +163,6 @@ sub cmd_tasks {
     } elsif ($subcommand =~ /^kd(el)?$/i) {
         $self->kdel($msg, $argument);
     } elsif ($subcommand =~ /^a(dd)?$/i) {
-        # Check for the new 'add all' subcommand
         if (defined $argument && $argument =~ /^(all)\s+(.+)$/i) {
             my ($all_keyword, $task_desc_for_all) = (lc $1, $2);
             debug("Identified 'add all' subcommand with description: '$task_desc_for_all'");
@@ -241,10 +301,28 @@ sub task_add {
     debug("-> Success: Assigned task $new_task_id to '$nickname'.");
     
     my $kid_id = $data->{kids}{$nickname};
-    my $dm_message = "Hi! You've been assigned a new task:\n**$new_task_id: $task_desc**\n\n"
+    my $dm_content = "Hi! You've been assigned a new task:\n**$new_task_id: $task_desc**\n\n"
                    . "To complete it, type: `!tasks complete $new_task_id`";
 
-    $self->discord->send_dm($kid_id, $dm_message);
+    # Modified to include a button component for the initial message
+    my $dm_payload = {
+        content => $dm_content,
+        components => [
+            {
+                type => 1, # Action row
+                components => [
+                    {
+                        type => 2, # Button
+                        style => 3, # Success (green)
+                        label => "Mark as Complete",
+                        custom_id => "task_complete_$new_task_id", # Unique ID for handling
+                    }
+                ]
+            }
+        ]
+    };
+
+    $self->discord->send_dm($kid_id, $dm_payload);
     debug("-> Sent DM notification to kid ID '$kid_id'.");
     
     $self->discord->send_message($msg->{'channel_id'}, "Task **$new_task_id** assigned to **$nickname**.");
@@ -378,7 +456,7 @@ sub task_list {
     }
 
     my $embed = { embeds => [{ title => "Active Task List", color => 15844367, fields => \@fields, timestamp => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime) }] };
-    #debug("-> Sending task list embed. " . Dumper($embed));
+    debug("-> Sending task list embed. " . Data::Dumper::Dumper($embed), 2);
     $self->discord->send_message($msg->{'channel_id'}, $embed);
 }
 
@@ -395,11 +473,29 @@ sub send_reminders {
         my $kid_id = $data->{kids}{$nickname};
         if (ref $data->{active_tasks}{$nickname} eq 'ARRAY') {
             foreach my $task (@{ $data->{active_tasks}{$nickname} }) {
-                my $dm_reminder = "Friendly reminder! You still have a task to complete:\n"
+                my $dm_content = "Friendly reminder! You still have a task to complete:\n"
                                 . "**$task->{id}: $task->{description}**\n\n"
                                 . "To complete it, type: `!tasks complete $task->{id}`";
 
-                $self->discord->send_dm($kid_id, $dm_reminder);
+                # Modified to include a button component
+                my $dm_payload = {
+                    content => $dm_content,
+                    components => [
+                        {
+                            type => 1, # Action row
+                            components => [
+                                {
+                                    type => 2, # Button
+                                    style => 3, # Success (green)
+                                    label => "Mark as Complete",
+                                    custom_id => "task_complete_$task->{id}", # Unique ID for handling
+                                }
+                            ]
+                        }
+                    ]
+                };
+
+                $self->discord->send_dm($kid_id, $dm_payload);
                 debug("-> Sent reminder to '$nickname' (ID: $kid_id) for task '$task->{id}'.");
             }
         }
