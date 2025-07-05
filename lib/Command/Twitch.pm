@@ -11,6 +11,7 @@ use JSON;
 use Date::Parse;
 use Time::Seconds;
 use POSIX qw(strftime);
+use Encode;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_twitch);
@@ -77,6 +78,7 @@ has timer_sub => ( is => 'ro', default => sub
 my $debug = 0;
 sub debug { my $msg = shift; say "[TWITCH DEBUG] $msg" if $debug }
 
+sub BUILD { shift->twitch_loop }
 
 sub cmd_twitch {
     my ($self, $msg) = @_;
@@ -162,6 +164,12 @@ sub stream_online {
     
     my $topic = $stream_info->{title} || 'No title provided';
     my $game  = $stream_info->{game_name}  || 'N/A';
+
+    # Crucial: Explicitly decode the topic as UTF-8.
+    # This ensures the string is properly flagged as a Perl Unicode string
+    # before it's used in the embed structure for Discord.
+    $topic = Encode::decode_utf8($topic, Encode::FB_CROAK);
+
 
     # Check if a message for this stream already exists in our database.
     if (my $msgID = $twitch->{$streamer}{'msgID'}) {
@@ -259,6 +267,7 @@ sub send_streamer_message {
     my ($self, $discord, $config, $streamer, $stream_info, $twitch) = @_;
     my $topic = $stream_info->{title};
     my $game  = $stream_info->{game_name} || 'N/A'; # Corrected from 'game' to 'game_name'
+    $topic = Encode::decode_utf8($topic, Encode::FB_CROAK);
 
     my $msg;
     # Check if the streamer was last seen offline very recently to customize the message.
@@ -810,13 +819,13 @@ sub twitch_stats {
                 # --- Format Online Streamer Line ---
                 my $start_time = $twitch_data->{$streamer}{'online_at_epoch'} || str2time($stream_info->{started_at});
                 my $duration_string = time_ago($start_time);
-                my $line = "🟢 `$streamer`: **$stream_info->{game_name}** for $duration_string";
+                my $line = "🟢 `$streamer`: **$stream_info->{game_name}** for **$duration_string**";
                 push @online_lines, $line;
             } else {
                 # --- Format Offline Streamer Line ---
                 my $offline_status;
                 if (my $last_seen = $twitch_data->{$streamer}{'last_seen_offline'}) {
-                    $offline_status = "Offline for " . time_ago($last_seen) . ".";
+                    $offline_status = "Offline for **" . time_ago($last_seen) . "**.";
                 } else {
                     $offline_status = "Currently offline.";
                 }
@@ -839,8 +848,8 @@ sub twitch_stats {
 
                 if (defined $duration_secs && $duration_secs > 0) {
                     my $duration_str = Time::Seconds->new($duration_secs)->pretty;
-                    $duration_str =~ s/ and \d+ seconds//;
-                    $duration_info = " Last stream was for **$duration_str**.";
+                    $duration_str =~ s/, \d+ seconds//;
+                    $duration_info = " Last stream was for **$duration_str**";
                 }
 
                 my $line = "🔴 `$streamer`: $offline_status$duration_info";
@@ -898,7 +907,7 @@ sub time_ago {
     my $string = $time->pretty;
     
     # Clean up the pretty string for a more concise look
-    $string =~ s/ and \d+ seconds//;
+    $string =~ s/, \d+ seconds//;
     return $string;
 }
 
