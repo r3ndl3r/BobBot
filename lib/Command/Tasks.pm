@@ -24,31 +24,31 @@ has usage         => ( is => 'ro', default => <<~'EOF'
 
     This command allows you to manage tasks for registered "kids".
 
-    `!tasks kadd/ka <Discord_ID> <nickname>`
+    `!tasks (ka)dd <Discord_ID> <nickname>`
     Registers a Discord user as a "kid" who can be assigned tasks.
     *Example:* `!tasks kadd 123456789012345678 mykidname`
 
-    `!tasks kdel/kd <nickname>`
+    `!tasks (kd)el <nickname>`
     Unregisters a kid from the task system and removes any tasks assigned to them.
     *Example:* `!tasks kdel mykidname`
 
-    `!tasks add/a <nickname> <description>`
+    `!tasks (a)dd <nickname/all> <description>`
     Assigns a new task with a unique ID (e.g., T1, T2) to a registered kid. The kid will be notified via DM.
     *Example:* `!tasks add mykidname "Clean your room"`
 
-    `!tasks del/d <Task_ID>`
+    `!tasks (d)el <Task_ID>`
     Removes an active task from the system by its unique ID. This command can remove any task.
     *Example:* `!tasks del T5`
 
-    `!tasks complete/c <Task_ID>`
+    `!tasks (c)omplete <Task_ID>`
     Allows a registered kid to mark one of their own tasks as complete. The task assigner will receive a DM.
     *Example:* `!tasks complete T1`
 
-    `!tasks list/l`
+    `!tasks (l)ist`
     Displays all current, incomplete tasks. If you are a registered kid, you will only see your own tasks. Otherwise, all active tasks for all kids will be listed.
     *Example:* `!tasks list`
 
-    `!tasks remind/r`
+    `!tasks (r)emind`
     Manually triggers immediate DM reminders for all outstanding tasks to their assigned kids.
     *Example:* `!tasks remind`
     EOF
@@ -102,8 +102,45 @@ sub cmd_tasks {
     } elsif ($subcommand =~ /^kd(el)?$/i) {
         $self->kdel($msg, $argument);
     } elsif ($subcommand =~ /^a(dd)?$/i) {
-        my ($nickname, $task_desc) = split /\s+/, $argument, 2;
-        $self->task_add($msg, $nickname, $task_desc);
+        # Check for the new 'add all' subcommand
+        if (defined $argument && $argument =~ /^(all)\s+(.+)$/i) {
+            my ($all_keyword, $task_desc_for_all) = (lc $1, $2);
+            debug("Identified 'add all' subcommand with description: '$task_desc_for_all'");
+
+            my $data = $self->get_task_data();
+            my %kids = %{ $data->{kids} }; # Get all registered kids
+
+            # Handle case where no kids are registered
+            if (scalar keys %kids == 0) {
+                $self->discord->send_message($msg->{'channel_id'}, "No kids are currently registered to assign tasks to. Use `!tasks kadd <Discord_ID> <nickname>` first.");
+                $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
+                debug("No kids registered for 'add all'. Aborting.");
+                return;
+            }
+
+            my @assigned_to;
+            # Iterate through each registered kid and assign the task
+            for my $nickname (keys %kids) {
+                # Call the existing task_add subroutine for each kid.
+                # task_add already handles adding to DB, assigning unique IDs, and sending DMs.
+                $self->task_add($msg, $nickname, $task_desc_for_all);
+                push @assigned_to, $nickname;
+            }
+            # Provide feedback to the user on Discord
+            $self->discord->send_message($msg->{'channel_id'}, "Assigned task to all registered kids: " . join(', ', map { "**$_**" } sort @assigned_to));
+            $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
+            debug("Successfully assigned task to all " . scalar(@assigned_to) . " kids.");
+
+        } elsif (defined $argument && $argument =~ /^all\s*$/i) {
+            # User typed "!tasks add all" without a description
+            $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks add all <task description>`");
+            $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
+            debug("Add all command missing task description.");
+        } else {
+            # Existing logic for 'add <nickname> <description>'
+            my ($nickname, $task_desc) = split /\s+/, $argument, 2;
+            $self->task_add($msg, $nickname, $task_desc);
+        }
     } elsif ($subcommand =~ /^d(el)?$/i) {
         $self->task_del($msg, $argument);
     } elsif ($subcommand =~ /^c(omplete)?$/i) {
