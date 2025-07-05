@@ -17,7 +17,7 @@ has db                  => ( is => 'ro', required => 1 );
 has name                => ( is => 'ro', default => 'giveaway' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Free game giveaways' );
-has pattern             => ( is => 'ro', default => '^g(iveaway)? ?' );
+has pattern             => ( is => 'ro', default => '^give(away)? ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_giveaway } );
 has usage               => ( is => 'ro', default => 'Usage: `!giveaway on | off | list | update`' );
 has timer_seconds       => ( is => 'ro', default => 6000 );
