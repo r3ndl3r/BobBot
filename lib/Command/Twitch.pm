@@ -59,14 +59,13 @@ has usage               => ( is => 'ro',    default => <<~'EOF'
 has timer_sub => ( is => 'ro',    default => sub
     {
         my $self = shift;
-        Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->twitch }
+        Mojo::IOLoop->recurring( $self->timer_seconds => sub { $self->twitch_loop }
         )
     }
 );
 
 
 my $debug = 0;
-
 sub debug { my $msg = shift; say "[TWITCH DEBUG] $msg" if $debug }
 
 
@@ -92,69 +91,107 @@ sub cmd_twitch {
 
     my $channel = $msg->{'channel_id'};
     my $author  = $msg->{'author'};
-    my $args    = lc $msg->{'content'}; # Lowercase everything for arg parsing.
-       $args    =~ s/$pattern//i;
-    my @args    = split /\s+/, $args;
-    my $config  = $self->{'bot'}{'config'}{'twitch'};
-    my ($arg, $streamer) = @args;
+    my $args_str = lc $msg->{'content'};
+       $args_str =~ s/$pattern//i;
+    
+    # Replace all commas with spaces to handle both delimiters.
+    $args_str =~ s/,/ /g;
 
-    if (!@args) {
+    # Now split the normalized string into arguments.
+    my @args = split /\s+/, $args_str;
+    my $config = $self->{'bot'}{'config'}{'twitch'};
+    
+    my $arg = shift @args || '';
+
+    if ($arg =~ /^(a|add)$/ && @args) {
+        $self->add_streamer($discord, $channel, $msg, \@args, $config);
+    } elsif ($arg =~ /^(d|del|delete|remove)$/ && @args) {
+        $self->del_streamer($discord, $channel, $msg, \@args, $config);
+    } elsif ($arg =~ /^(l|list)$/) {
+        $self->list_streamers($discord, $channel, $msg);
+    } elsif ($arg =~ /^(t|tag)$/ && @args) {
+        $self->tag($discord, $channel, $msg, \@args);
+    } elsif ($arg =~ /^(r|refresh)$/) {
+        $self->bot->react_robot($channel, $msg->{'id'});
+        $self->twitch_loop();
+    } elsif ($arg =~ /^(h|help)$/ || !$arg) {
         $self->discord->send_message($msg->{channel_id}, $self->usage);
-        return;
+    } else {
+        my $value = join ' ', @args;
+        $self->discord->send_message($msg->{channel_id}, "Unknown command: `$arg$value`. " . $self->usage);
+        $self->bot->react_error($channel, $msg->{'id'});
     }
-
-    if ($arg =~ /^a(dd)?$/ && $streamer)           { $self->add_streamer($discord, $channel, $msg, $streamer, $config);  return }
-    if ($arg =~ /^d(el(ete)?)?$/ && $streamer)     { $self->del_streamer($discord, $channel, $msg, $streamer, $config);  return }
-    if ($arg =~ /^l(ist)?$/)                       { $self->list_streamers($discord, $channel, $msg); return }
-    if ($arg =~ /^t(ag)?$/ && $streamer)           { $self->tag($discord, $channel, $msg, $streamer);  return }
-    if ($args =~ /^r(efresh)?$/)                   { $discord->delete_message($msg->{'channel_id'}, $msg->{'id'}); $self->twitch(); return }
-
-    $self->discord->send_message($msg->{channel_id}, $self->usage);
 }
 
 
-sub twitch {
-    my $self    = shift;
-    my $discord = $self->discord;
-    my $config  = $self->{'bot'}{'config'}{'twitch'};
+sub twitch_loop {
+    my $self   = shift;
+    my $config = $self->{'bot'}{'config'}{'twitch'};
+    my $twitch = $self->twitchGet();
+    
+    # Get the list of all streamers we are monitoring.
+    my @all_monitored_streamers = keys %$twitch;
+    return unless @all_monitored_streamers;
 
-    my $twitch  = $self->twitchGet();
-    my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
+    # Fetch the status for all monitored streamers in a single API call.
+    $self->get_live_streams(\@all_monitored_streamers, sub {
+        my $live_streams_list = shift;
 
-    for my $streamer (@streams) {
-        my $topic = $self->getStream($streamer, $config);
-        debug "ONLINE: $streamer - $topic" if $topic;
+        # Create a hash of live streamers for easy lookup.
+        # The key is the streamer's login name, and the value is their stream data.
+        my %live_streams_hash = map { lc($_->{user_login}) => $_ } @$live_streams_list;
 
-        if ($topic) {
-            $self->stream_online($discord, $config, $streamer, $topic, $twitch);
-        } else {
-            $self->stream_offline($discord, $config, $streamer, $twitch);
+        for my $streamer_login (map { lc } @all_monitored_streamers) {
+            
+            # Check if the streamer is in the hash of live streams.
+            if (my $stream_info = $live_streams_hash{$streamer_login}) {
+                # If they are live, process them with stream_online.
+                my $info = {
+                    title => $stream_info->{title},
+                    game  => $stream_info->{game_name},
+                };
+                $self->stream_online($self->discord, $config, $streamer_login, $info, $twitch);
+            } else {
+                # If they are not in the live hash, they are offline.
+                $self->stream_offline($self->discord, $config, $streamer_login, $twitch);
+            }
         }
-    }
+    });
 }
 
 
 sub stream_online {
-    my ($self, $discord, $config, $streamer, $topic, $twitch) = @_;
+    my ($self, $discord, $config, $streamer, $stream_info, $twitch) = @_;
+    
+    # Provide default values to prevent errors with undef values
+    my $topic = $stream_info->{title} || 'No title provided';
+    my $game  = $stream_info->{game}  || 'N/A';
 
-    if ($twitch->{$streamer}{'msgID'} && $twitch->{$streamer}{'topic'} ne $topic) {
-        debug "TOPIC CHANGED: $streamer - $topic";
+    # Compare safely using the null-coalescing operator //
+    if ($twitch->{$streamer}{'msgID'} && 
+        (($twitch->{$streamer}{'topic'} // '') ne $topic || ($twitch->{$streamer}{'game'} // '') ne $game)) {
+        
+        debug "INFO CHANGED: $streamer - $topic - $game";
 
         $discord->get_message($config->{'channel'}, $twitch->{$streamer}{'msgID'}, sub {
             my $msg = shift;
 
-            $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $topic;
-            $msg->{'embeds'}[0]{'fields'}[2]{'value'} = localtime;
-
-            $discord->edit_message($config->{'channel'}, $twitch->{$streamer}{'msgID'}, $msg);
+            if (ref $msg eq 'HASH' && ref $msg->{embeds}[0] eq 'HASH' && ref $msg->{embeds}[0]{fields} eq 'ARRAY') {
+                $msg->{'embeds'}[0]{'fields'}[0]{'value'} = $topic;
+                $msg->{'embeds'}[0]{'fields'}[1]{'value'} = $game;
+                $msg->{'embeds'}[0]{'fields'}[3]{'value'} = localtime;
+                
+                $discord->edit_message($config->{'channel'}, $twitch->{$streamer}{'msgID'}, $msg);
+            }
         });
 
-    } elsif (!$twitch->{$streamer}{'msgID'}) { # Streamer does not already have a message. Send alert.
-
-        $self->send_streamer_message($discord, $config, $streamer, $topic, $twitch);
+    } elsif (!$twitch->{$streamer}{'msgID'}) {
+        $self->send_streamer_message($discord, $config, $streamer, $stream_info, $twitch);
     }
 
+    # Persist the latest info
     $twitch->{$streamer}{'topic'} = $topic;
+    $twitch->{$streamer}{'game'}  = $game;
     $self->twitchSet($twitch);
 }
 
@@ -166,24 +203,30 @@ sub stream_offline {
         $discord->delete_message($config->{'channel'}, $twitch->{$streamer}{'msgID'});
         delete $twitch->{$streamer}{'msgID'};
         delete $twitch->{$streamer}{'topic'};
+        delete $twitch->{$streamer}{'game'}; # Also remove game
+        delete $twitch->{$streamer}{'online_at'}; # Also remove online_at time
         $self->twitchSet($twitch);
     }
 }
 
 
 sub send_streamer_message {
-    my ($self,$discord, $config, $streamer, $topic, $twitch) = @_;
+    my ($self, $discord, $config, $streamer, $stream_info, $twitch) = @_;
+    my $topic = $stream_info->{title};
+    my $game  = $stream_info->{game} || 'N/A'; # Use 'N/A' if no game is being played
 
-    # If last online record exists and it's less than 10 mins ago then probably stream crashed.
     my $msg;
-    if ($twitch->{$streamer}{'lastOn'} && $twitch->{$streamer}{'lastOn'} > 0 && (time() - $twitch->{$streamer}{'lastOn'}) < 600) {
-        $msg = "Streamer `$streamer` is back online (from probable stream crash).";
+    if ($twitch->{$streamer}{'last_seen_online'} && (time() - $twitch->{$streamer}{'last_seen_online'}) < 600) {
+        $msg = "Streamer `$streamer` is back online (from a probable stream crash).";
     } else {
         $msg = "Streamer `$streamer` is online.";
     }
+    
+    # This is the first time we're creating a message for this stream session
+    my $online_since_time = localtime;
+    # Store this initial online time in the database
+    $twitch->{$streamer}{'online_at'} = $online_since_time;
 
-    # Streamer is online but no message exists. Create a new message.
-    my $time = localtime;
     my $embed = {
         'embeds' => [
             {
@@ -199,25 +242,27 @@ sub send_streamer_message {
                 'description' => "$msg\n",
                 'color'       => 48491,
                 'url'         => "https://www.twitch.tv/$streamer",
-
                 'fields' => [
                     {
                         'name'  => 'Title:',
                         'value' => $topic,
                     },
                     {
-                        'name'  => 'Online since:',
-                        'value' => $time,
+                        'name'  => 'Activity:',
+                        'value' => $game,
                     },
-                                                            {
-                        'name'  => 'Last update:',
-                        'value' => $time,
+                    {
+                        'name'  => 'Online Since:',
+                        'value' => $online_since_time, # The time the stream started
+                    },
+                    {
+                        'name'  => 'Last Update:',
+                        'value' => $online_since_time, # Initially the same as online since
                     },
                 ],
             }
         ]
     };
-
 
     my @tags = exists $twitch->{$streamer}{'tags'} ? keys %{ $twitch->{$streamer}{'tags'} } : ();
     if (@tags) {
@@ -230,77 +275,117 @@ sub send_streamer_message {
         }
     }
 
-    $twitch->{$streamer}{'lastOn'} = time;
-    $discord->send_message($config->{'channel'}, $embed, sub { $twitch->{$streamer}{'msgID'} = shift->{'id'}; $self->twitchSet($twitch) } );
+    $twitch->{$streamer}{'last_seen_online'} = time;
+    # Send message and upon success, save the message ID and updated twitch data to the database
+    $discord->send_message($config->{'channel'}, $embed, sub { 
+        $twitch->{$streamer}{'msgID'} = shift->{'id'}; 
+        $self->twitchSet($twitch);
+    });
 }
 
 
 sub add_streamer {
-    my ($self, $discord, $channel, $msg, $streamer, $config) = @_;
+    my ($self, $discord, $channel, $msg, $streamers_ref, $config) = @_;
 
-    unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "The streamer `$streamer` is not valid.");
-        return;
-    }
+    my @streamers_to_add = @{$streamers_ref};
+    my $twitch_data      = $self->twitchGet();
+    
+    my @added;
+    my @already_exist;
+    my @invalid;
 
-    my $twitch  = $self->twitchGet();
-    my @streams = ref $twitch eq 'HASH' ? keys %$twitch : ();
+    for my $streamer (@streamers_to_add) {
+        # Basic validation for streamer name format
+        unless ($streamer =~ /^\w{4,25}$/i) {
+            push @invalid, "`$streamer` (invalid format)";
+            next;
+        }
 
-    # Check to see if stream already exists.
-    for my $s (@streams) {
-        if ($streamer eq $s) {
-            $discord->send_message($channel, "Streamer `$streamer` is already in Twitch alerts list.");
-            $self->bot->react_error($channel, $msg->{'id'});
-            return;
+        # Check if the streamer is already in our list
+        if (exists $twitch_data->{lc($streamer)}) {
+            push @already_exist, "`$streamer`";
+            next;
+        }
+
+        # Check if the streamer exists on Twitch
+        if ($self->validChannel($streamer)) {
+            $twitch_data->{lc($streamer)} = {};
+            push @added, "`$streamer`";
+        } else {
+            push @invalid, "`$streamer` (not found on Twitch)";
         }
     }
 
-    unless ( $self->validChannel($streamer) ) {
-        $discord->send_message($channel, "Streamer `$streamer` is not a valid.");
-        $self->bot->react_error($channel, $msg->{'id'});
-        return;
+    # Construct a comprehensive response message
+    my $response = "";
+    $response .= "✅ Added: " . join(', ', @added) . "\n" if @added;
+    $response .= "👍 Already in list: " . join(', ', @already_exist) . "\n" if @already_exist;
+    $response .= "❌ Failed to add: " . join(', ', @invalid) . "\n" if @invalid;
+    
+    unless ($response) {
+        $response = "No streamers were provided to add.";
     }
 
-    $twitch->{$streamer} = {};
-    $self->twitchSet($twitch);
+    $discord->send_message($channel, $response);
 
-    $discord->send_message($channel, "Added `$streamer` to Twitch alerts list.");
-    $self->bot->react_robot($channel, $msg->{'id'});
-    $self->twitch();
+    # If we successfully added new streamers, save to DB and trigger an update loop
+    if (@added) {
+        $self->twitchSet($twitch_data);
+        $self->bot->react_robot($channel, $msg->{'id'});
+        $self->twitch_loop();
+    } else {
+        # If nothing was added, it's likely an error or all existed already.
+        $self->bot->react_error($channel, $msg->{'id'});
+    }
 }
 
 
 sub del_streamer {
-    my ($self, $discord, $channel, $msg, $streamer, $config) = @_;
+    my ($self, $discord, $channel, $msg, $streamers_ref, $config) = @_;
 
-    unless ($streamer =~ /^\w+$/i) {
-        $discord->send_message($channel, "The streamer `$streamer` is not valid.");
-        $self->bot->react_error($channel, $msg->{'id'});
-        return;
-    }
+    my @streamers_to_del = @{$streamers_ref};
+    my $twitch_data      = $self->twitchGet();
 
-    my $twitch  = $self->twitchGet();
-    my @streams = keys %$twitch;
+    my @deleted;
+    my @not_found;
 
-    for my $s (@streams) {
-        if ($streamer eq $s) {
-            # Clean up the message associated with the streamer
-            if ($twitch->{$streamer}{'msgID'}) {
-                $discord->delete_message($config->{'channel'}, $twitch->{$streamer}{'msgID'});
+    for my $streamer (@streamers_to_del) {
+        my $lc_streamer = lc($streamer);
+
+        # Check if the streamer exists in our list
+        if (exists $twitch_data->{$lc_streamer}) {
+            # If a message ID exists for this streamer, delete the Discord message
+            if ($twitch_data->{$lc_streamer}{'msgID'}) {
+                $discord->delete_message($config->{'channel'}, $twitch_data->{$lc_streamer}{'msgID'});
             }
 
-            # Delete the streamer from the list
-            delete $twitch->{$streamer};
-            $self->twitchSet($twitch);
-            $discord->send_message($channel, "Deleted `$streamer` from alerts list.");
-            $self->bot->react_robot($channel, $msg->{'id'});
-
-            return;
+            # Delete the streamer's data from our records
+            delete $twitch_data->{$lc_streamer};
+            push @deleted, "`$streamer`";
+        } else {
+            push @not_found, "`$streamer`";
         }
     }
 
-    $discord->send_message($channel, "Streamer `$streamer` is not in the alerts list.");
-    $self->bot->react_error($channel, $msg->{'id'});
+    # Construct a comprehensive response message
+    my $response = "";
+    $response .= "🗑️ Deleted: " . join(', ', @deleted) . "\n" if @deleted;
+    $response .= "❓ Not found: " . join(', ', @not_found) . "\n" if @not_found;
+
+    unless ($response) {
+        $response = "No streamers were provided to delete.";
+    }
+
+    $discord->send_message($channel, $response);
+
+    # If we successfully deleted streamers, save the updated data and react
+    if (@deleted) {
+        $self->twitchSet($twitch_data);
+        $self->bot->react_robot($channel, $msg->{'id'});
+    } else {
+        # React with an error if no streamers were found to delete
+        $self->bot->react_error($channel, $msg->{'id'});
+    }
 }
 
 
@@ -320,44 +405,64 @@ sub list_streamers {
 
 
 sub tag {
-    my ($self, $discord, $channel, $msg, $streamer) = @_;
-    my $uID       = $msg->{'author'}->{'id'};
-    my $twitch    = $self->twitchGet();
-    my @streams   = ref $twitch eq 'HASH' ? keys %$twitch : ();
-    my %streamers = map { $_ => 1 } @streams;
+    my ($self, $discord, $channel, $msg, $streamers_ref) = @_;
+    my @streamer_names = @{$streamers_ref};
+    my $uID            = $msg->{'author'}->{'id'};
+    my $twitch_data    = $self->twitchGet();
 
-
-
-    if ($streamer =~ /^l(ist)?$/) {
-        my @tagged;
-        for my $s (@streams) {
-            if ($twitch->{$s}{'tags'}{$uID}) {
-                push @tagged, $s;
+    # Handle the special 'list' subcommand, which is not a streamer name
+    if (@streamer_names == 1 && $streamer_names[0] =~ /^l(ist)?$/) {
+        my @tagged_for_user;
+        for my $streamer (keys %$twitch_data) {
+            if ($twitch_data->{$streamer}{'tags'}{$uID}) {
+                push @tagged_for_user, "`$streamer`";
             }
         }
-        if (@tagged) {
-            $discord->send_message($channel, "<\@$uID> you have tagging enabled for: " . join(', ', map { "`$_`" } sort @tagged));
-        } else {
-            $discord->send_message($channel, "<\@$uID> you don't have tagging enabled for anybody.");
-        }
-
+        
+        my $response = @tagged_for_user
+            ? "<\@$uID> you have tagging enabled for: " . join(', ', sort @tagged_for_user)
+            : "<\@$uID> you don't have tagging enabled for any streamers.";
+        
+        $discord->send_message($channel, $response);
         $self->bot->react_robot($channel, $msg->{'id'});
         return;
     }
 
-    if ($twitch->{$streamer}) {
-        if ($twitch->{$streamer}{'tags'}{$uID}) {
-            delete $twitch->{$streamer}{'tags'}{$uID};
-            $discord->send_message($channel, "<\@$uID> Twitch tagging removed for `$streamer`.");
-            $self->twitchSet($twitch);
+    my @tagged;
+    my @untagged;
+    my @not_found;
+
+    # Loop through each streamer name provided
+    for my $streamer (@streamer_names) {
+        my $lc_streamer = lc($streamer);
+
+        if (exists $twitch_data->{$lc_streamer}) {
+            # Toggle the tag status for the user
+            if (exists $twitch_data->{$lc_streamer}{'tags'}{$uID}) {
+                delete $twitch_data->{$lc_streamer}{'tags'}{$uID};
+                push @untagged, "`$streamer`";
+            } else {
+                $twitch_data->{$lc_streamer}{'tags'}{$uID} = 1;
+                push @tagged, "`$streamer`";
+            }
         } else {
-            $twitch->{$streamer}{'tags'}{$uID} = 1;
-            $discord->send_message($channel, "<\@$uID> Twitch tagging added for `$streamer`.");
-            $self->twitchSet($twitch);
+            push @not_found, "`$streamer`";
         }
+    }
+
+    # Construct a comprehensive response message
+    my $response = "Tag summary for <\@$uID>:\n";
+    $response .= "🏷️ Tagged: " . join(', ', @tagged) . "\n" if @tagged;
+    $response .= "❌ Untagged: " . join(', ', @untagged) . "\n" if @untagged;
+    $response .= "❓ Streamer not found: " . join(', ', @not_found) . "\n" if @not_found;
+
+    $discord->send_message($channel, $response);
+
+    # If any tags were changed, save the data to the database
+    if (@tagged || @untagged) {
+        $self->twitchSet($twitch_data);
         $self->bot->react_robot($channel, $msg->{'id'});
     } else {
-        $discord->send_message($channel, "<\@$uID> `$streamer` is not a valid streamer.");
         $self->bot->react_error($channel, $msg->{'id'});
     }
 }
@@ -395,12 +500,15 @@ sub validChannel {
 }
 
 
-sub getStream {
-    my ($self, $stream, $config) = @_;
+sub get_live_streams {
+    my ($self, $streamers_ref, $callback) = @_;
+    my $config = $self->bot->config->{twitch};
 
+    # Build the query string by repeating the user_login parameter.
+    my $query_string = join '&', map { "user_login=" . $_ } @$streamers_ref;
+    my $url = "https://api.twitch.tv/helix/streams?$query_string";
+    
     my $oauth_token = $self->get_or_generate_oauth_token($config);
-
-    my $url = "https://api.twitch.tv/helix/streams?user_login=$stream";
     my $ua = LWP::UserAgent->new;
 
     my $res = $ua->get($url,
@@ -410,10 +518,12 @@ sub getStream {
 
     if ($res->is_success) {
         my $json = from_json($res->content);
-        return $json->{'data'} ? $json->{'data'}[0]{'title'} : 0;
+        # The API returns a list under the 'data' key. This list only
+        # contains streamers who are currently online.
+        $callback->($json->{data} || []);
     } else {
-        $self->handle_error($res, $config, $stream);
-        return 0;
+        $self->handle_error($res, $config, 'batch request');
+        $callback->([]); # Return an empty list on error
     }
 }
 
