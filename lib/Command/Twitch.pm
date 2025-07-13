@@ -825,12 +825,12 @@ sub twitch_stats {
                 # --- Format Offline Streamer Line ---
                 my $offline_status;
                 if (my $last_seen = $twitch_data->{$streamer}{'last_seen_offline'}) {
-                    $offline_status = "Offline for **" . time_ago($last_seen) . "**.";
+                    $offline_status = "\noffline for **" . time_ago($last_seen) . "**.";
                 } else {
-                    $offline_status = "Currently offline.";
+                    $offline_status = "\ncurrently offline.";
                 }
                 
-                my $duration_info = " No completed streams recorded."; # Default message
+                my $duration_info = " no completed streams recorded."; # Default message
                 
                 # --- Corrected Duration Logic ---
                 # Prioritize the pre-calculated duration.
@@ -849,7 +849,7 @@ sub twitch_stats {
                 if (defined $duration_secs && $duration_secs > 0) {
                     my $duration_str = Time::Seconds->new($duration_secs)->pretty;
                     $duration_str =~ s/, \d+ seconds//;
-                    $duration_info = " Last stream was for **$duration_str**";
+                    $duration_info = "\n last stream was for **$duration_str**\n";
                 }
 
                 my $line = "🔴 `$streamer`: $offline_status$duration_info";
