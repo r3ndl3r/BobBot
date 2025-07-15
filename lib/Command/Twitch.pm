@@ -77,8 +77,8 @@ has timer_sub => ( is => 'ro', default => sub
 
 my $debug = 0;
 sub debug { my $msg = shift; say "[TWITCH DEBUG] $msg" if $debug }
-
 sub BUILD { shift->twitch_loop }
+
 
 sub cmd_twitch {
     my ($self, $msg) = @_;
@@ -158,6 +158,7 @@ sub twitch_loop {
         }
     });
 }
+
 
 sub stream_online {
     my ($self, $discord, $config, $streamer, $stream_info, $twitch) = @_;
@@ -261,12 +262,10 @@ sub stream_offline {
 }
 
 
-# In lib/Command/Twitch.pm
-
 sub send_streamer_message {
     my ($self, $discord, $config, $streamer, $stream_info, $twitch) = @_;
     my $topic = $stream_info->{title};
-    my $game  = $stream_info->{game_name} || 'N/A'; # Corrected from 'game' to 'game_name'
+    my $game  = $stream_info->{game_name} || 'N/A';
     $topic = Encode::decode_utf8($topic, Encode::FB_CROAK);
 
     my $msg;
@@ -792,8 +791,6 @@ sub get_top_clip {
 }
 
 
-# In lib/Command/Twitch.pm
-
 sub twitch_stats {
     my ($self, $discord, $channel, $msg) = @_;
     my $twitch_data = $self->twitchGet();
@@ -844,7 +841,6 @@ sub twitch_stats {
                         }
                     }
                 }
-                # --- End Correction ---
 
                 if (defined $duration_secs && $duration_secs > 0) {
                     my $duration_str = Time::Seconds->new($duration_secs)->pretty;
