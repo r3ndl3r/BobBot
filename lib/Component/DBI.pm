@@ -70,7 +70,8 @@ sub del {
         my $sql = "DELETE FROM storage WHERE name = ?";
         my $sth = $dbh->prepare($sql);
 
-        return 1;
+        # Execute the delete statement and return success/failure.
+        return $sth->execute($key) ? 1 : undef;
     } else {
         return undef;
     }
