@@ -153,7 +153,7 @@ sub cmd_del {
         }
 
         # Inform the user that the process is starting.
-        $discord->send_message($command_channel_id, "Initiating bulk deletion for recent messages in <#$bulk_target_channel_id>...");
+        #$discord->send_message($command_channel_id, "Initiating bulk deletion for recent messages in <#$bulk_target_channel_id>...");
 
         # Delete the user's original command message FIRST. It will be part of the first bulk delete batch.
         $discord->delete_message($command_channel_id, $msg->{'id'}); 
