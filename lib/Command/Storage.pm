@@ -41,13 +41,47 @@ has usage               => ( is => 'ro', default => <<~'EOF'
     *Example:* `!storage show my_settings`
 
     `!storage delete <key_name>`
-    Dletes a specified storage key and its associated data from the database.
+    Deletes a specified storage key and its associated data from the database.
     *Example:* `!storage delete old_data`
 
     `!storage list`
-    Lists all top-level storage keys currently in the database.
+    Lists all top-level storage keys currently in the database as clickable buttons.
     EOF
 );
+
+# This on_message handler intercepts all button clicks to see if they are for this module.
+has on_message => ( is => 'ro', default => sub {
+    my $self = shift;
+    $self->discord->gw->on('INTERACTION_CREATE' => sub {
+        my ($gw, $interaction) = @_;
+        # Ensure it's a button click with a custom_id before proceeding.
+        return unless (ref $interaction->{data} eq 'HASH' && $interaction->{data}{custom_id});
+
+        my $custom_id = $interaction->{data}{custom_id};
+        my $channel_id = $interaction->{channel_id};
+
+        # Check if the button click is for showing a storage key's value.
+        if ($custom_id =~ /^storage_show_key_(.+)$/) {
+            my $key_name = $1;
+            $self->debug("Button clicked to show storage key: $key_name");
+
+            # Defer the response immediately. This tells Discord "I got the click"
+            # and prevents an "interaction failed" error, giving the bot time to process.
+            $self->discord->interaction_response($interaction->{id}, $interaction->{token}, { type => 5 });
+
+            # Create a mock message object. This isn't a real message, but it allows
+            # us to call the existing show_value function without rewriting it.
+            my $mock_msg = {
+                channel_id => $channel_id,
+                author     => $interaction->{member}{user},
+                id         => $interaction->{id}
+            };
+
+            # Call the existing show_value function to post the data publicly.
+            $self->show_value($self->discord, $channel_id, $mock_msg, $key_name);
+        }
+    });
+});
 
 
 sub cmd_storage {
@@ -72,16 +106,13 @@ sub cmd_storage {
         unless (defined $argument_str && length $argument_str > 0) {
             $discord->send_message($channel, "Usage: `!storage init <key_name>`");
             $self->bot->react_error($channel, $msg->{'id'});
-            $self->debug("cmd_storage: Init command missing key name.");
             return;
         }
         $self->init_key($discord, $channel, $msg, $argument_str);
     } elsif ($subcommand eq 'set') {
-        # 'set' command expects a key_name followed by the value (can contain spaces)
         unless (defined $argument_str && $argument_str =~ /^(\S+)\s+(.+)$/s) { # Key and value
             $discord->send_message($channel, "Usage: `!storage set <key_name> <JSON_data_or_string>`");
             $self->bot->react_error($channel, $msg->{'id'});
-            $self->debug("cmd_storage: Set command missing key or value. Argument string: '" . ($argument_str // 'undef') . "'");
             return;
         }
         my ($key_name, $value_str) = ($1, $2);
@@ -90,7 +121,6 @@ sub cmd_storage {
         unless (defined $argument_str && length $argument_str > 0) {
             $discord->send_message($channel, "Usage: `!storage show <key_name>`");
             $self->bot->react_error($channel, $msg->{'id'});
-            $self->debug("cmd_storage: Show command missing key name.");
             return;
         }
         $self->show_value($discord, $channel, $msg, $argument_str);
@@ -98,75 +128,47 @@ sub cmd_storage {
         unless (defined $argument_str && length $argument_str > 0) {
             $discord->send_message($channel, "Usage: `!storage delete <key_name>`");
             $self->bot->react_error($channel, $msg->{'id'});
-            $self->debug("cmd_storage: Delete command missing key name.");
             return;
         }
         $self->delete_key($discord, $channel, $msg, $argument_str);
     } elsif ($subcommand eq 'list') {
         $self->list_keys($discord, $channel, $msg);
     } else {
-        # If no valid subcommand is recognized, display the general usage help.
         $discord->send_message($channel, $self->usage);
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("cmd_storage: Unknown subcommand: '$subcommand'. Displaying general usage.");
     }
 }
 
 # Helper function to initialize a new storage key.
 sub init_key {
     my ($self, $discord, $channel, $msg, $key_name) = @_;
-    $self->debug("init_key: Attempting to initialize key '$key_name'.");
-
-    # Check if the key already exists to prevent accidental overwrites if not intended.
-    if (defined $self->db->get($key_name)) {
-        $discord->send_message($channel, "Storage: Key '**$key_name**' already exists. Use `!storage set` to modify its value.");
+    if ($self->db->get($key_name)) {
+        $discord->send_message($channel, "Storage: Key '**$key_name**' already exists.");
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("init_key: Key '$key_name' already exists. Aborting initialization.");
         return;
     }
-
-    # Store an empty hash reference, which is a common way to initialize data structures in Perl.
     if ($self->db->set($key_name, {})) {
         $discord->send_message($channel, "Storage: Initialized key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
-        $self->debug("init_key: Successfully initialized key '$key_name'.");
     } else {
         $discord->send_message($channel, "Storage: Failed to initialize key '**$key_name**'.");
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("init_key: Failed to initialize key '$key_name'. Database error?");
     }
 }
 
 # Helper function to set (store) a value for a given storage key.
 sub set_value {
     my ($self, $discord, $channel, $msg, $key_name, $value_str) = @_;
-    $self->debug("set_value: Attempting to set value for key '$key_name' with string: '$value_str'.");
-
     my $data_to_store;
-    my $json_error;
+    eval { $data_to_store = JSON->new->decode($value_str); };
+    if ($@) { $data_to_store = $value_str; }
 
-    # Attempt to decode the value string as JSON.
-    eval {
-        $data_to_store = JSON->new->decode($value_str);
-    };
-    if ($@) {
-        $json_error = $@;
-        # If JSON decoding fails, store the original string as plain text.
-        $data_to_store = $value_str;
-        $self->debug("set_value: Value is not valid JSON. Storing as plain string. Error: $json_error");
-    } else {
-        $self->debug("set_value: Value is valid JSON. Storing as Perl data structure.");
-    }
-
-    # Attempt to store the data in the database.
     if ($self->db->set($key_name, $data_to_store)) {
         $discord->send_message($channel, "Storage: Set value for key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
-        $self->debug("set_value: Successfully set value for key '$key_name'.");
     } else {
         $discord->send_message($channel, "Storage: Failed to set value for key '**$key_name**'.");
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("set_value: Failed to set value for key '$key_name'. Database error?");
     }
 }
 
@@ -177,87 +179,121 @@ sub show_value {
 
     my $data = $self->db->get($key_name);
 
-    # Check if the key exists in the database.
     unless (defined $data) {
         $discord->send_message($channel, "Storage: Key '**$key_name**' does not exist.");
-        $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("show_value: Key '$key_name' does not exist.");
+        # Only react to the original command message, not a button click interaction
+        if (ref($msg) eq 'HASH' && $msg->{content}) {
+             $self->bot->react_error($channel, $msg->{'id'});
+        }
         return;
     }
 
-    # Format the retrieved data using Data::Dumper for a readable representation.
     my $dump_output = Dumper($data);
-    say $dump_output;
     
-    # Define a maximum length for the message to avoid Discord's character limit.
-    my $max_length = 1900; # Max Discord message is 2000, leaving room for markdown.
-
-    # Truncate the output if it's too long.
-    if (length $dump_output > $max_length) {
-        $dump_output = substr($dump_output, 0, $max_length) . "\n... (output truncated)";
-        $self->("show_value: Data for key '$key_name' was truncated as it exceeded Discord message limits.");
-    }
-
-    # Send the formatted output within a Perl code block.
-    $discord->send_message($channel, "```perl\n$dump_output\n```");
-    $self->bot->react_robot($channel, $msg->{'id'});
-    $self->debug("show_value: Successfully sent value for key '$key_name' to channel.");
+    $self->bot->send_long_message($channel, $dump_output)->then(sub {
+        if (ref($msg) eq 'HASH' && $msg->{content}) {
+            $self->bot->react_robot($channel, $msg->{'id'});
+        }
+        $self->debug("show_value: Successfully sent value for key '$key_name' to channel.");
+    })->catch(sub {
+        my $err = shift;
+        $self->log->error("Failed to send long message for key '$key_name': $err");
+        if (ref($msg) eq 'HASH' && $msg->{content}) {
+            $self->bot->react_error($channel, $msg->{'id'});
+        }
+    });
 }
 
 # Helper function to delete a storage key.
 sub delete_key {
     my ($self, $discord, $channel, $msg, $key_name) = @_;
-    $self->debug("delete_key: Attempting to delete key '$key_name'.");
-
-    # Check if the key exists before attempting deletion to provide better feedback.
     unless (defined $self->db->get($key_name)) {
         $discord->send_message($channel, "Storage: Key '**$key_name**' does not exist.");
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("delete_key: Key '$key_name' does not exist. Aborting deletion.");
         return;
     }
 
-    # Attempt to delete the key from the database.
     if ($self->db->del($key_name)) {
         $discord->send_message($channel, "Storage: Deleted key '**$key_name**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
-        $self->debug("delete_key: Successfully deleted key '$key_name'.");
     } else {
         $discord->send_message($channel, "Storage: Failed to delete key '**$key_name**'.");
         $self->bot->react_error($channel, $msg->{'id'});
-        $self->debug("delete_key: Failed to delete key '$key_name'. Database error?");
     }
 }
 
-
-# Helper function to list all top-level storage keys in the database.
+# Helper function to list all top-level storage keys as interactive buttons.
 sub list_keys {
     my ($self, $discord, $channel, $msg) = @_;
-    $self->debug("list_keys: Retrieving all top-level storage keys from the database.");
+    $self->debug("list_keys: Retrieving all top-level storage keys to display as buttons.");
 
     my $dbh = $self->db->{'dbh'};
-    # Query the database to get all 'name' entries from the 'storage' table.
     my $sql = "SELECT name FROM storage";
     my $sth = $dbh->prepare($sql);
     $sth->execute();
 
     my @keys;
-    # Fetch all key names.
     while (my ($key) = $sth->fetchrow_array()) {
         push @keys, $key;
     }
 
-    if (@keys) {
-        # Format the list of keys for display in Discord.
-        my $key_list = join(', ', map { "`$_`" } sort @keys);
-        $discord->send_message($channel, "Storage: Available keys: $key_list");
-        $self->debug("list_keys: Sent list of " . scalar(@keys) . " keys to channel.");
-    } else {
-        # Inform if no keys are found.
+    if (!@keys) {
         $discord->send_message($channel, "Storage: No keys currently stored.");
-        $self->debug("list_keys: No keys found in the database.");
+        $self->bot->react_robot($channel, $msg->{'id'});
+        return;
     }
-    $self->bot->react_robot($channel, $msg->{'id'});
+
+    @keys = sort { lc $a cmp lc $b } @keys;
+
+    my @components;
+    my @current_row;
+
+    # Discord allows a maximum of 5 rows, each with a maximum of 5 buttons.
+    # We will send a max of 25 keys as buttons.
+    my $key_limit = @keys > 25 ? 25 : @keys;
+
+    for my $i (0 .. $key_limit - 1) {
+        my $key = $keys[$i];
+
+        # Button labels have a max length of 80 characters.
+        my $label = (length $key > 80) ? substr($key, 0, 77) . '...' : $key;
+
+        push @current_row, {
+            type      => 2, # Button component
+            style     => 2, # Secondary style (grey)
+            label     => $label,
+            custom_id => "storage_show_key_$key"
+        };
+
+        # If the current row is full (5 buttons) or this is the last key,
+        # push the row to the main components array and reset the row.
+        if (scalar @current_row == 5 || $i == $key_limit - 1) {
+            # This is the corrected line:
+            push @components, { type => 1, components => [ @current_row ] };
+            @current_row = ();
+        }
+    }
+
+    my $message_content = "Storage: Available keys. Click a button to view its value.";
+    if (scalar @keys > 25) {
+        $message_content = "Storage: Showing the first 25 of " . scalar(@keys) . " available keys.";
+    }
+
+    my $payload = {
+        content    => $message_content,
+        components => \@components
+    };
+
+    $discord->send_message($channel, $payload, sub {
+        my $response = shift;
+        if (ref $response eq 'HASH' && exists $response->{code}) {
+            $self->log->error("Error sending storage list message: " . Dumper($response));
+            $discord->send_message($channel, "Error: Could not display the key list. Check the bot's logs for details.");
+            $self->bot->react_error($channel, $msg->{'id'});
+        } else {
+            $self->bot->react_robot($channel, $msg->{'id'});
+        }
+    });
 }
 
 1;
