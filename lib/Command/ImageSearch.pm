@@ -24,10 +24,6 @@ has function            => ( is => 'ro', default => sub { \&cmd_image_search } )
 has usage               => ( is => 'ro', default => 'Usage: `!image <search term>`' );
 
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[IMAGESEARCH DEBUG] $msg" if $debug }
-
-
 sub cmd_image_search {
     my ($self, $msg) = @_;
 
@@ -45,7 +41,7 @@ sub cmd_image_search {
         return;
     }
 
-    debug("User requested an image search for: '$args'");
+    $self->debug("User requested an image search for: '$args'");
 
     # Get the API configuration from config.ini
     my $config = $self->bot->config->{google_image_search};
@@ -62,14 +58,14 @@ sub cmd_image_search {
 
     # Construct the Google Custom Search API URL. This fetches 10 image results.
     my $url = "https://www.googleapis.com/customsearch/v1?key=$api_key&cx=$cx&q=$query&searchType=image&num=10";
-    debug("Fetching URL: $url");
+    $self->debug("Fetching URL: $url");
 
     # Use Mojo's non-blocking user agent to make the API call
     $self->discord->rest->ua->get_p($url)->then(sub {
         my $tx = shift;
 
         unless ($tx->res->is_success) {
-            debug("Failed to fetch image results: " . $tx->res->status_line);
+            $self->debug("Failed to fetch image results: " . $tx->res->status_line);
             $discord->send_message($channel, "Sorry, I couldn't connect to the image search API. Error: " . $tx->res->message);
             $self->bot->react_error($channel, $msg->{'id'});
             return;
@@ -79,7 +75,7 @@ sub cmd_image_search {
 
         # Check for API-level errors, like exceeding the daily quota.
         if (my $error = $json->{error}) {
-            debug("Google API returned an error: " . $error->{message});
+            $self->debug("Google API returned an error: " . $error->{message});
             $discord->send_message($channel, "The image search API returned an error: " . $error->{message});
             $self->bot->react_error($channel, $msg->{'id'});
             return;
@@ -87,7 +83,7 @@ sub cmd_image_search {
 
         # Check if any items were returned.
         unless (ref $json->{items} eq 'ARRAY' && @{$json->{items}}) {
-            debug("No image results found for query: '$args'");
+            $self->debug("No image results found for query: '$args'");
             $discord->send_message($channel, "Sorry, I couldn't find any images for '**$args**'.");
             $self->bot->react_error($channel, $msg->{'id'});
             return;
@@ -99,7 +95,7 @@ sub cmd_image_search {
         my $image_title = $item->{title};
         my $image_context = $item->{image}{contextLink};
 
-        debug("Found image: $image_url");
+        $self->debug("Found image: $image_url");
 
         my $embed = {
             'embeds' => [{

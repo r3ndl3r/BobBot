@@ -8,7 +8,7 @@ use namespace::clean;
 
 use LWP::UserAgent;
 use JSON;
-use URI::Escape; # Added for URL encoding
+use URI::Escape;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_meme);

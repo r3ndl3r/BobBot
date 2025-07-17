@@ -22,10 +22,6 @@ has pattern       => ( is => 'ro', default => sub { qr/^tc\b/i } );
 has function      => ( is => 'ro', default => sub { \&cmd_tc } );
 
 
-my $debug = 0; 
-sub debug { my $msg = shift; say "[TwitchChat DEBUG] $msg" if $debug }
-
-
 sub cmd_tc {
     my ($self, $msg) = @_;
 
@@ -57,7 +53,7 @@ sub cmd_tc {
         my $config = $self->bot->config->{twitch};
 
         $self->discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
-        send_twitch_chat($config, $target_channel, $message_to_send);
+        send_twitch_chat($self, $config, $target_channel, $message_to_send);
         $self->discord->send_message($msg->{'channel_id'}, "Message sent to Twitch channel: `$target_channel`");
 
     } else {
@@ -68,8 +64,8 @@ sub cmd_tc {
 
 # Sends a single message to a specified Twitch channel's chat.
 sub send_twitch_chat {
-    my ($config, $streamer_channel, $message) = @_;
-    debug("Attempting to send chat message to #$streamer_channel");
+    my ($self, $config, $streamer_channel, $message) = @_;
+    $self->debug("Attempting to send chat message to #$streamer_channel");
 
     # Establish a connection to Twitch's IRC server.
     my $socket = IO::Socket::INET->new(
@@ -79,25 +75,25 @@ sub send_twitch_chat {
     );
     unless ($socket) {
         warn "[TwitchChat] Could not connect to Twitch IRC: $!";
-        debug("-> ERROR: Could not connect to Twitch IRC.");
+        $self->debug("-> ERROR: Could not connect to Twitch IRC.");
         return;
     }
-    debug("-> Successfully connected to Twitch IRC.");
+    $self->debug("-> Successfully connected to Twitch IRC.");
 
     my $channel_name = lc($streamer_channel);
 
     # Authenticate, join the channel, send the message, and disconnect.
-    debug("-> Sending PASS");
+    $self->debug("-> Sending PASS");
     say $socket "PASS $config->{bot_oauth}";
-    debug("-> Sending NICK: $config->{bot_username}");
+    $self->debug("-> Sending NICK: $config->{bot_username}");
     say $socket "NICK $config->{bot_username}";
-    debug("-> Sending JOIN: #$channel_name");
+    $self->debug("-> Sending JOIN: #$channel_name");
     say $socket "JOIN #$channel_name";
-    debug("-> Sending PRIVMSG: $message");
+    $self->debug("-> Sending PRIVMSG: $message");
     say $socket "PRIVMSG #$channel_name :$message";
 
     close $socket;
-    debug("-> Socket closed. Message sent.");
+    $self->debug("-> Socket closed. Message sent.");
 }
 
 1;

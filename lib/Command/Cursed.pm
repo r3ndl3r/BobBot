@@ -23,8 +23,6 @@ has pattern             => ( is => 'ro', default => '^cursed ?' );
 has function            => ( is => 'ro', default => sub { \&cmd_cursed } );
 has usage               => ( is => 'ro', default => 'Usage: !cursed' );
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[CURSED DEBUG] $msg" if $debug }
 
 sub cmd_cursed {
     my ($self, $msg) = @_;
@@ -35,14 +33,14 @@ sub cmd_cursed {
     my $pattern = $self->pattern;
 
     my $url = "https://www.reddit.com/r/cursedimages.json?sort=top&t=week&limit=100";
-    debug("Fetching URL: $url");
+    $self->debug("Fetching URL: $url");
 
     # Use Mojo::UserAgent for non-blocking fetch
     $self->discord->rest->ua->get_p($url)->then(sub {
         my $tx = shift;
 
         unless ($tx->res->is_success) {
-            debug("Failed to fetch cursed images: " . $tx->res->status_line);
+            $self->debug("Failed to fetch cursed images: " . $tx->res->status_line);
             $discord->send_message($channel, "Sorry, I couldn't fetch a cursed image right now. Error: " . $tx->res->status_line);
             $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑");
             return;
@@ -53,14 +51,14 @@ sub cmd_cursed {
             $json = $tx->res->json;
         };
         if ($@ || !defined $json) { # Check for parsing errors or if json is undef
-            debug("Failed to parse JSON response or JSON was undef: $@");
+            $self->debug("Failed to parse JSON response or JSON was undef: $@");
             $discord->send_message($channel, "Sorry, I received corrupted data from the cursed images source.");
             $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑");
             return;
         }
 
         unless (ref $json eq 'HASH' && $json->{data} && ref $json->{data}{children} eq 'ARRAY') {
-            debug("Invalid JSON structure received from Reddit API.");
+            $self->debug("Invalid JSON structure received from Reddit API.");
             $discord->send_message($channel, "Sorry, I received invalid data from the cursed images source.");
             $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑");
             return;
@@ -75,7 +73,7 @@ sub cmd_cursed {
         }
 
         unless (scalar @available_urls > 0) {
-            debug("No valid URLs found in Reddit API response.");
+            $self->debug("No valid URLs found in Reddit API response.");
             $discord->send_message($channel, "Couldn't find any cursed images. The subreddit might be empty or inaccessible.");
             $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🛑");
             return;
@@ -83,7 +81,7 @@ sub cmd_cursed {
 
         my $cursed_to_send;
         my %cursed_seen = %{ $self->db->get('cursed') || {} };
-        debug("Existing cursed images in DB: " . (scalar keys %cursed_seen));
+        $self->debug("Existing cursed images in DB: " . (scalar keys %cursed_seen));
 
         my $found_unique = 0;
         my $max_attempts = scalar(@available_urls) * 2;
@@ -98,25 +96,25 @@ sub cmd_cursed {
                 $cursed_to_send = $potential_cursed;
                 $cursed_seen{$cursed_to_send} = 1;
                 $found_unique = 1;
-                debug("Found new unique cursed image: $cursed_to_send");
+                $self->debug("Found new unique cursed image: $cursed_to_send");
                 last;
             }
-            debug("Attempt $_: '$potential_cursed' already seen or invalid. Retrying.");
+            $self->debug("Attempt $_: '$potential_cursed' already seen or invalid. Retrying.");
         }
 
         unless ($found_unique) {
             $cursed_to_send = $available_urls[int(rand(scalar @available_urls))];
             $discord->send_message($channel, "I've run out of *new* cursed images! Here's a random one I've sent before. (History cleared)");
             $self->db->set('cursed', {});
-            debug("No unique image found after $max_attempts tries, falling back to a random one: $cursed_to_send. History reset.");
+            $self->debug("No unique image found after $max_attempts tries, falling back to a random one: $cursed_to_send. History reset.");
         } else {
             $self->db->set('cursed', \%cursed_seen);
-            debug("Saving updated cursed image list to DB.");
+            $self->debug("Saving updated cursed image list to DB.");
         }
 
         $discord->send_message($channel, $cursed_to_send);
         $discord->create_reaction($msg->{'channel_id'}, $msg->{'id'}, "🤖");
-        debug("Message sent and reaction added.");
+        $self->debug("Message sent and reaction added.");
 
     })->catch(sub {
         my $err = shift;

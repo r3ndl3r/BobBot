@@ -71,7 +71,7 @@ has on_message => ( is => 'ro', default => sub {
             # Check if the button click is for a task completion
             if ($custom_id =~ /^task_complete_(\S+)$/) {
                 my $task_id_from_button = $1;
-                debug("-> 'Mark Complete' button clicked for task $task_id_from_button by user " . ($interaction->{member}{user}{username} // $interaction->{user}{username} // 'Unknown'));
+                $self->debug("-> 'Mark Complete' button clicked for task $task_id_from_button by user " . ($interaction->{member}{user}{username} // $interaction->{user}{username} // 'Unknown'));
 
                 my $completer_id;
                 # Try getting ID from member (typically for guild interactions)
@@ -79,17 +79,17 @@ has on_message => ( is => 'ro', default => sub {
                     defined $interaction->{member}{user} && ref $interaction->{member}{user} eq 'HASH' &&
                     defined $interaction->{member}{user}{id}) {
                     $completer_id = $interaction->{member}{user}{id};
-                    debug("-> Got completer ID from member/user: $completer_id.");
+                    $self->debug("-> Got completer ID from member/user: $completer_id.");
                 }
                 # Fallback to getting ID directly from user (typically for DM interactions)
                 elsif (defined $interaction->{user} && ref $interaction->{user} eq 'HASH' &&
                        defined $interaction->{user}{id}) {
                     $completer_id = $interaction->{user}{id};
-                    debug("-> Got completer ID directly from user: $completer_id.");
+                    $self->debug("-> Got completer ID directly from user: $completer_id.");
                 }
 
                 unless (defined $completer_id) {
-                    debug("-> ERROR: Could not determine completer's user ID from interaction. Interaction payload: " . Data::Dumper::Dumper($interaction));
+                    $self->debug("-> ERROR: Could not determine completer's user ID from interaction. Interaction payload: " . Data::Dumper::Dumper($interaction));
                     $self->discord->interaction_response($interaction->{id}, $interaction->{token}, { type => 4, data => { content => "Error: Could not identify your user ID to complete the task. Please try again later." } });
                     return;
                 }
@@ -122,14 +122,11 @@ has on_message => ( is => 'ro', default => sub {
 );
 
 
-my $debug = 0;
-sub debug { say "[TASKS DEBUG] $_[0]" if ($debug > 0 && !$_[1]) || ($debug == 2 && $_[1]) }
-
 # Helper function to safely load and initialize the data structure.
 sub get_task_data {
     my $self = shift;
     my $data = $self->db->get('tasks') || {};
-    debug("Loading data from DB: " . Data::Dumper::Dumper($data), 2);
+    $self->debug("Loading data from DB: " . Data::Dumper::Dumper($data), 2);
 
     # Ensure all top-level keys are initialized correctly.
     $data->{kids} //= {};
@@ -143,7 +140,7 @@ sub get_task_data {
 sub cmd_tasks {
     my ($self, $msg) = @_;
     my $args_str = $msg->{'content'};
-    debug("Received command string: '$args_str'");
+    $self->debug("Received command string: '$args_str'");
     $args_str =~ s/^tasks?\s*//i;
     my @args = split /\s+/, $args_str, 2;
 
@@ -153,7 +150,7 @@ sub cmd_tasks {
     }
     
     my $subcommand = lc shift @args;
-    debug("Parsed subcommand: '$subcommand'");
+    $self->debug("Parsed subcommand: '$subcommand'");
 
     my $argument = $args[0];
 
@@ -165,7 +162,7 @@ sub cmd_tasks {
     } elsif ($subcommand =~ /^a(dd)?$/i) {
         if (defined $argument && $argument =~ /^(all)\s+(.+)$/i) {
             my ($all_keyword, $task_desc_for_all) = (lc $1, $2);
-            debug("Identified 'add all' subcommand with description: '$task_desc_for_all'");
+            $self->debug("Identified 'add all' subcommand with description: '$task_desc_for_all'");
 
             my $data = $self->get_task_data();
             my %kids = %{ $data->{kids} }; # Get all registered kids
@@ -174,7 +171,7 @@ sub cmd_tasks {
             if (scalar keys %kids == 0) {
                 $self->discord->send_message($msg->{'channel_id'}, "No kids are currently registered to assign tasks to. Use `!tasks kadd <Discord_ID> <nickname>` first.");
                 $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
-                debug("No kids registered for 'add all'. Aborting.");
+                $self->debug("No kids registered for 'add all'. Aborting.");
                 return;
             }
 
@@ -189,13 +186,13 @@ sub cmd_tasks {
             # Provide feedback to the user on Discord
             $self->discord->send_message($msg->{'channel_id'}, "Assigned task to all registered kids: " . join(', ', map { "**$_**" } sort @assigned_to));
             $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
-            debug("Successfully assigned task to all " . scalar(@assigned_to) . " kids.");
+            $self->debug("Successfully assigned task to all " . scalar(@assigned_to) . " kids.");
 
         } elsif (defined $argument && $argument =~ /^all\s*$/i) {
             # User typed "!tasks add all" without a description
             $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks add all <task description>`");
             $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
-            debug("Add all command missing task description.");
+            $self->debug("Add all command missing task description.");
         } else {
             # Existing logic for 'add <nickname> <description>'
             my ($nickname, $task_desc) = split /\s+/, $argument, 2;
@@ -218,15 +215,15 @@ sub cmd_tasks {
 
 sub kadd {
     my ($self, $msg, $id, $nickname) = @_;
-    debug("Attempting to add kid. ID: '$id', Nickname: '$nickname'");
+    $self->debug("Attempting to add kid. ID: '$id', Nickname: '$nickname'");
     unless ($id && $nickname && $id =~ /^\d+$/) {
-        debug("-> Failure: Invalid arguments provided.");
+        $self->debug("-> Failure: Invalid arguments provided.");
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks kadd <Discord_ID> <nickname>`");
     }
     my $data = $self->get_task_data();
     $data->{kids}{lc($nickname)} = $id;
     $self->db->set('tasks', $data);
-    debug("-> Success: Added '$nickname' to database.");
+    $self->debug("-> Success: Added '$nickname' to database.");
     $self->discord->send_message($msg->{'channel_id'}, "Added kid **$nickname**.");
 }
 
@@ -234,9 +231,9 @@ sub kadd {
 sub kdel {
     my ($self, $msg, $nickname) = @_;
 
-    debug("Attempting to delete kid: '$nickname'");
+    $self->debug("Attempting to delete kid: '$nickname'");
     unless ($nickname) {
-        debug("-> Failure: No nickname provided.");
+        $self->debug("-> Failure: No nickname provided.");
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks kdel <nickname>`");
     }
     
@@ -244,10 +241,10 @@ sub kdel {
     if (delete $data->{kids}{lc($nickname)}) {
         delete $data->{active_tasks}{lc($nickname)};
         $self->db->set('tasks', $data);
-        debug("-> Success: Removed '$nickname' from database.");
+        $self->debug("-> Success: Removed '$nickname' from database.");
         $self->discord->send_message($msg->{'channel_id'}, "Removed kid **$nickname**.");
     } else {
-        debug("-> Failure: Nickname '$nickname' not found.");
+        $self->debug("-> Failure: Nickname '$nickname' not found.");
         $self->discord->send_message($msg->{'channel_id'}, "Could not find kid with nickname **$nickname**.");
     }
 }
@@ -256,7 +253,7 @@ sub kdel {
 sub task_add {
     my ($self, $msg, $nickname, $task_desc) = @_;
 
-    debug("Attempting to assign task. Nickname: '$nickname', Task: '$task_desc'");
+    $self->debug("Attempting to assign task. Nickname: '$nickname', Task: '$task_desc'");
     unless ($nickname && $task_desc) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks add <nickname> <task description>`");
     }
@@ -265,7 +262,7 @@ sub task_add {
     $nickname = lc($nickname);
     
     unless (exists $data->{kids}{$nickname}) {
-        debug("-> Failure: Kid '$nickname' not found.");
+        $self->debug("-> Failure: Kid '$nickname' not found.");
         return $self->discord->send_message($msg->{'channel_id'}, "Kid '**$nickname**' not found.");
     }
 
@@ -298,7 +295,7 @@ sub task_add {
     };
 
     $self->db->set('tasks', $data);
-    debug("-> Success: Assigned task $new_task_id to '$nickname'.");
+    $self->debug("-> Success: Assigned task $new_task_id to '$nickname'.");
     
     my $kid_id = $data->{kids}{$nickname};
     my $dm_content = "Hi! You've been assigned a new task:\n**$new_task_id: $task_desc**\n\n"
@@ -323,7 +320,7 @@ sub task_add {
     };
 
     $self->discord->send_dm($kid_id, $dm_payload);
-    debug("-> Sent DM notification to kid ID '$kid_id'.");
+    $self->debug("-> Sent DM notification to kid ID '$kid_id'.");
     
     $self->discord->send_message($msg->{'channel_id'}, "Task **$new_task_id** assigned to **$nickname**.");
 }
@@ -332,7 +329,7 @@ sub task_add {
 sub task_del {
     my ($self, $msg, $task_id_to_remove) = @_;
 
-    debug("Attempting to remove task ID '$task_id_to_remove'.");
+    $self->debug("Attempting to remove task ID '$task_id_to_remove'.");
     unless ($task_id_to_remove) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks del <Task_ID>` (e.g., T1)");
     }
@@ -343,7 +340,7 @@ sub task_del {
     KID_LOOP: foreach my $nickname (keys %{ $data->{active_tasks} }) {
         for (my $i = 0; $i < @{ $data->{active_tasks}{$nickname} }; $i++) {
             if (lc($data->{active_tasks}{$nickname}[$i]{id}) eq lc($task_id_to_remove)) {
-                debug("-> Found task '$task_id_to_remove' for '$nickname'. Removing it.");
+                $self->debug("-> Found task '$task_id_to_remove' for '$nickname'. Removing it.");
                 splice(@{ $data->{active_tasks}{$nickname} }, $i, 1);
                 $task_found = 1;
                 last KID_LOOP;
@@ -355,7 +352,7 @@ sub task_del {
         $self->db->set('tasks', $data);
         $self->discord->send_message($msg->{'channel_id'}, "Removed task **$task_id_to_remove**.");
     } else {
-        debug("-> Failure: Task ID '$task_id_to_remove' not found.");
+        $self->debug("-> Failure: Task ID '$task_id_to_remove' not found.");
         $self->discord->send_message($msg->{'channel_id'}, "Could not find task with ID **$task_id_to_remove**.");
     }
 }
@@ -364,22 +361,22 @@ sub task_del {
 sub task_complete {
     my ($self, $msg, $task_id_to_complete) = @_;
     
-    debug("Attempting to complete task ID '$task_id_to_complete'.");
+    $self->debug("Attempting to complete task ID '$task_id_to_complete'.");
     unless ($task_id_to_complete) {
         return $self->discord->send_message($msg->{'channel_id'}, "Usage: `!tasks complete <Task_ID>` (e.g., T1)");
     }
     
     my $data = $self->get_task_data();
     my $completer_id = $msg->{author}{id};
-    debug("-> Completer Discord ID: '$completer_id'");
+    $self->debug("-> Completer Discord ID: '$completer_id'");
     
     my ($nickname) = grep { $data->{kids}{$_} eq $completer_id } keys %{ $data->{kids} };
     
     unless ($nickname) {
-        debug("-> Failure: User '$completer_id' is not a registered kid.");
+        $self->debug("-> Failure: User '$completer_id' is not a registered kid.");
         return $self->discord->send_message($msg->{'channel_id'}, "You are not registered as a kid who can complete tasks.");
     }
-    debug("-> Found matching nickname for completer: '$nickname'");
+    $self->debug("-> Found matching nickname for completer: '$nickname'");
 
     my $task_found = 0;
     my $task_index = -1;
@@ -394,16 +391,16 @@ sub task_complete {
     if ($task_found) {
         my $completed_task = splice(@{ $data->{active_tasks}{$nickname} }, $task_index, 1);
         my $assigner_id = $completed_task->{assigner_id};
-        debug("-> Found matching task for '$nickname'. Assigner ID: '$assigner_id'");
+        $self->debug("-> Found matching task for '$nickname'. Assigner ID: '$assigner_id'");
         $self->db->set('tasks', $data);
 
         $self->discord->send_message($msg->{'channel_id'}, "Great job! Task **$completed_task->{id}** marked as complete.");
         
         my $assigner_notification = "✅ Task Complete! **$nickname** has completed the task: **$completed_task->{description}**";
         $self->discord->send_dm($assigner_id, $assigner_notification);
-        debug("-> Sent completion DM to assigner ID '$assigner_id'.");
+        $self->debug("-> Sent completion DM to assigner ID '$assigner_id'.");
     } else {
-        debug("-> Failure: Task '$task_id_to_complete' not found for user '$nickname'.");
+        $self->debug("-> Failure: Task '$task_id_to_complete' not found for user '$nickname'.");
         $self->discord->send_message($msg->{'channel_id'}, "Could not find active task **$task_id_to_complete** assigned to you.");
     }
 }
@@ -412,7 +409,7 @@ sub task_complete {
 sub task_list {
     my ($self, $msg) = @_;
     my $author_id = $msg->{author}{id};
-    debug("Generating active task list for user $author_id");
+    $self->debug("Generating active task list for user $author_id");
     my $data = $self->get_task_data();
     
     # --- Determine which tasks to show ---
@@ -421,11 +418,11 @@ sub task_list {
     my @nicknames_to_list;
     if ($kid_nickname) {
         # User is a registered kid, only prepare their nickname for listing.
-        debug("-> User is kid '$kid_nickname'. Showing their tasks only.");
+        $self->debug("-> User is kid '$kid_nickname'. Showing their tasks only.");
         push @nicknames_to_list, $kid_nickname;
     } else {
         # User is not a kid, show all tasks (admin/public view).
-        debug("-> User is not a registered kid. Showing all tasks.");
+        $self->debug("-> User is not a registered kid. Showing all tasks.");
         @nicknames_to_list = sort keys %{ $data->{active_tasks} };
     }
     # --- End determination ---
@@ -451,23 +448,23 @@ sub task_list {
         my $response = $kid_nickname
             ? "You have no active tasks. Great job!"
             : "There are no active tasks for anyone.";
-        debug("-> No active tasks found to display.");
+        $self->debug("-> No active tasks found to display.");
         return $self->discord->send_message($msg->{'channel_id'}, $response);
     }
 
     my $embed = { embeds => [{ title => "Active Task List", color => 15844367, fields => \@fields, timestamp => strftime('%Y-%m-%dT%H:%M:%SZ', gmtime) }] };
-    debug("-> Sending task list embed. " . Data::Dumper::Dumper($embed), 2);
+    $self->debug("-> Sending task list embed. " . Data::Dumper::Dumper($embed), 2);
     $self->discord->send_message($msg->{'channel_id'}, $embed);
 }
 
 
 sub send_reminders {
     my $self = shift;
-    debug("Reminder timer fired.");
+    $self->debug("Reminder timer fired.");
     my $data = $self->get_task_data();
     
     return unless %{ $data->{active_tasks} };
-    debug("Found active tasks. Processing reminders...");
+    $self->debug("Found active tasks. Processing reminders...");
     
     foreach my $nickname (keys %{ $data->{active_tasks} }) {
         my $kid_id = $data->{kids}{$nickname};
@@ -496,11 +493,11 @@ sub send_reminders {
                 };
 
                 $self->discord->send_dm($kid_id, $dm_payload);
-                debug("-> Sent reminder to '$nickname' (ID: $kid_id) for task '$task->{id}'.");
+                $self->debug("-> Sent reminder to '$nickname' (ID: $kid_id) for task '$task->{id}'.");
             }
         }
     }
-    debug("Reminder processing complete.");
+    $self->debug("Reminder processing complete.");
 }
 
 1;

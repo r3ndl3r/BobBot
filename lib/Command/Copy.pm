@@ -4,7 +4,6 @@ use utf8;
 
 use Moo;
 use strictures 2;
-
 use namespace::clean;
 
 use Exporter qw(import);

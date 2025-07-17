@@ -4,6 +4,8 @@ use utf8;
 
 use Moo;
 use strictures 2;
+use namespace::clean;
+
 use XML::Simple;
 use LWP::UserAgent;
 
@@ -14,7 +16,7 @@ has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has db                  => ( is => 'ro', required => 1 );
-has name                => ( is => 'ro', default => 'giveaway' );
+has name                => ( is => 'ro', default => 'Giveaway' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Free game giveaways' );
 has pattern             => ( is => 'ro', default => '^give(away)? ?' );

@@ -5,7 +5,8 @@ use utf8;
 use Moo;
 use strictures 2;
 use namespace::clean;
-use Date::Parse; 
+
+use Date::Parse;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_del);
@@ -78,8 +79,6 @@ has timer_sub => ( is => 'ro', default =>
     }
 );
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[DEL DEBUG] $msg" if $debug }
 
 sub cmd_del {
     my ($self, $msg) = @_;
@@ -303,19 +302,19 @@ sub _process_bulk_delete_batch {
 
         # Bulk delete requires a minimum of 2 messages.
         if ($num_eligible_for_batch >= 2) {
-            debug("Sending bulk delete request for $num_eligible_for_batch messages from channel $channel_id.");
+            $self->debug("Sending bulk delete request for $num_eligible_for_batch messages from channel $channel_id.");
             $self->discord->bulk_delete_message($channel_id, \@message_ids_to_bulk_delete, sub {
                 my $response = shift; # Success typically means undef or empty hash for 204 No Content
 
                 if (ref $response eq 'HASH' && $response->{code}) { # Check for API errors
                     $self->discord->send_message($initial_command_channel_id, "Error during bulk delete batch: " . ($response->{message} || "Unknown API error"));
                     $self->bot->react_error($initial_command_channel_id, $initial_msg_id);
-                    debug("Bulk delete batch failed: " . Data::Dumper::Dumper($response));
+                    $self->debug("Bulk delete batch failed: " . Data::Dumper::Dumper($response));
                     return; # Stop on error
                 }
 
                 $total_deleted_so_far += $num_eligible_for_batch;
-                debug("Successfully deleted $num_eligible_for_batch messages. Total deleted: $total_deleted_so_far.");
+                $self->debug("Successfully deleted $num_eligible_for_batch messages. Total deleted: $total_deleted_so_far.");
 
                 # Recursively call to get the next batch, if more messages were fetched than collected in current batch (meaning more are available after new_last_message_id)
                 # Or if we hit the batch_size_limit, indicating more might be available.
@@ -328,7 +327,7 @@ sub _process_bulk_delete_batch {
                     # Base case: No more full batches found, or all remaining messages are too old.
                     #$self->discord->send_message($initial_command_channel_id, "Bulk deletion complete for recent messages. Total deleted: **$total_deleted_so_far** from <#$channel_id>.");
                     $self->bot->react_robot($initial_command_channel_id, $initial_msg_id);
-                    debug("Bulk deletion process finished. Total: $total_deleted_so_far.");
+                    $self->debug("Bulk deletion process finished. Total: $total_deleted_so_far.");
                 }
             });
         } else {
@@ -339,7 +338,7 @@ sub _process_bulk_delete_batch {
             if ($total_deleted_so_far > 0 || (scalar @$messages_fetched > 0 && $messages_collected_in_batch == 0) ) { # If messages were fetched but none eligible, or if prior deletes occurred.
                 #$self->discord->send_message($initial_command_channel_id, "Bulk deletion complete for recent messages. Total deleted: **$total_deleted_so_far** from <#$channel_id>.");
                 $self->bot->react_robot($initial_command_channel_id, $initial_msg_id);
-                debug("Bulk deletion process finished. Total: $total_deleted_so_far.");
+                $self->debug("Bulk deletion process finished. Total: $total_deleted_so_far.");
             } else { # If total_deleted_so_far is 0 and no new eligible messages were found
                 $self->discord->send_message($initial_command_channel_id, "No recent messages (less than 14 days old) found for bulk deletion in <#$channel_id>.");
                 $self->bot->react_robot($initial_command_channel_id, $initial_msg_id);

@@ -51,7 +51,7 @@ sub cmd_catch {
     my $replyto = '<@' . $author->{'id'} . '>';
     my $discord = $self->discord;
 
-    my %catch = %{ $self->db->get('catch') };
+    my %catch = %{ $self->db->get('catch') || {} };
 
     do "./Catch.pm";
     my @patterns = @Command::Catch::patterns;

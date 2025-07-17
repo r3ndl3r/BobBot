@@ -12,7 +12,7 @@ our @EXPORT_OK = qw(cmd_chuck);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-has name                => ( is => 'ro', default => 'Chuck Norris?' );
+has name                => ( is => 'ro', default => 'Chuck' );
 has access              => ( is => 'ro', default => 0 );
 has description         => ( is => 'ro', default => 'Gets a random Chuck Norris fact.' );
 has pattern             => ( is => 'ro', default => '^chuck ?' );

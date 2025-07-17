@@ -115,23 +115,23 @@ has on_message => ( is => 'ro', default => sub {
         } elsif ($custom_id =~ /^trivia_set_difficulty_(easy|medium|hard)$/) {
             my $difficulty = $1;
             $active_channels{$channel_id}{pending_options}{difficulty} = $difficulty;
-            debug("User $user_id set difficulty to $difficulty for channel $channel_id.");
+            $self->debug("User $user_id set difficulty to $difficulty for channel $channel_id.");
             # Update the message to show selected difficulty
             $self->_update_buttons_menu($channel_id, $message_id);
 
         } elsif ($custom_id =~ /^trivia_set_winscore_(\d+)$/) {
             my $win_score = $1;
             $active_channels{$channel_id}{pending_options}{win_score} = $win_score;
-            debug("User $user_id set win score to $win_score for channel $channel_id.");
+            $self->debug("User $user_id set win score to $win_score for channel $channel_id.");
             # Update the message to show selected win score
             $self->_update_buttons_menu($channel_id, $message_id);
             
         } elsif ($custom_id eq 'trivia_select_category') {
-            debug("User $user_id clicked 'Select Category' for channel $channel_id.");
+            $self->debug("User $user_id clicked 'Select Category' for channel $channel_id.");
             $self->show_category_selection($channel_id, $message_id);
 
         } elsif ($custom_id eq 'trivia_start_with_buttons') {
-            debug("User $user_id clicked 'Start Game' for channel $channel_id.");
+            $self->debug("User $user_id clicked 'Start Game' for channel $channel_id.");
             my $opts = $active_channels{$channel_id}{pending_options};
             # Ensure opts is initialized
             $opts //= {};
@@ -157,7 +157,7 @@ has on_message => ( is => 'ro', default => sub {
             });
         
         } elsif ($custom_id eq 'trivia_cancel_buttons_setup') {
-            debug("User $user_id clicked 'Cancel' for channel $channel_id.");
+            $self->debug("User $user_id clicked 'Cancel' for channel $channel_id.");
             delete $active_channels{$channel_id}{pending_options}; # Clear pending options
             $self->_disable_buttons($channel_id, $message_id); # Disable current button menu
             $self->discord->send_message($channel_id, "Trivia game setup cancelled.");
@@ -174,7 +174,7 @@ has on_message => ( is => 'ro', default => sub {
                     if ($category_name) {
                         $active_channels{$channel_id}{pending_options}{category_id} = $category_id;
                         $active_channels{$channel_id}{pending_options}{category_name} = $category_name;
-                        debug("User $user_id selected category ID $category_id ($category_name) for channel $channel_id.");
+                        $self->debug("User $user_id selected category ID $category_id ($category_name) for channel $channel_id.");
                         delete $active_channels{$channel_id}{category_menu}; # Clear category menu state
                         $self->_update_buttons_menu($channel_id, $message_id); # Go back to the main menu after selection
                     } else {
@@ -201,16 +201,12 @@ has on_message => ( is => 'ro', default => sub {
             }
 
         } elsif ($custom_id eq 'trivia_back_to_main') {
-            debug("User $user_id clicked 'Back to Main Menu' for channel $channel_id.");
+            $self->debug("User $user_id clicked 'Back to Main Menu' for channel $channel_id.");
             delete $active_channels{$channel_id}{category_menu}; # Clear category menu state
             $self->_update_buttons_menu($channel_id, $message_id); # Go back to main setup menu
         }
     });
 });
-
-
-my $debug = 1;
-sub debug { my $msg = shift; say "[Trivia DEBUG] $msg" if $debug }
 
 
 # Helper to initialize data structures from DB
@@ -234,21 +230,21 @@ sub _get_session_token {
     my $persisted_token = $token_ref ? ${$token_ref} : ''; # Dereference the token
 
     if (defined $persisted_token && length $persisted_token > 0) {
-        debug("-> Using persisted session token for channel $channel_id: $persisted_token");
+        $self->debug("-> Using persisted session token for channel $channel_id: $persisted_token");
         $active_channels{$channel_id}{session_token} = $persisted_token;
         return Mojo::Promise->resolve($persisted_token);
     }
 
     # If not found in DB, request a new one
     my $api_url = 'https://opentdb.com/api_token.php?command=request';
-    debug("-> Requesting new session token for channel $channel_id.");
+    $self->debug("-> Requesting new session token for channel $channel_id.");
 
     return $self->discord->rest->ua->get_p($api_url)->then(sub {
         my $tx = shift;
         my $json = $tx->res->json;
 
         if ($json && $json->{response_code} == 0 && $json->{token}) {
-            debug("-> Got new token: $json->{token}");
+            $self->debug("-> Got new token: $json->{token}");
             $active_channels{$channel_id}{session_token} = $json->{token};
             my $token_to_store = \$json->{token};
             $self->db->set($token_key, $token_to_store);
@@ -256,13 +252,13 @@ sub _get_session_token {
             return Mojo::Promise->resolve($json->{token});
         }
 
-        debug("-> Failed to get session token: " . ($json->{response_message} // "Unknown error"));
+        $self->debug("-> Failed to get session token: " . ($json->{response_message} // "Unknown error"));
 
         return Mojo::Promise->reject("Failed to get session token.");
     })->catch(sub {
         my $err = shift;
 
-        debug("-> Error during session token fetch: $err");
+        $self->debug("-> Error during session token fetch: $err");
 
         return Mojo::Promise->reject("Network error fetching token: $err");
     });
@@ -275,26 +271,26 @@ sub _reset_session_token {
 
     my $api_url = "https://opentdb.com/api_token.php?command=reset&token=$token";
 
-    debug("-> Resetting session token for channel $channel_id: $token");
+    $self->debug("-> Resetting session token for channel $channel_id: $token");
 
     return $self->discord->rest->ua->get_p($api_url)->then(sub {
         my $tx = shift;
         my $json = $tx->res->json;
 
         if ($json && $json->{response_code} == 0 && $json->{token}) {
-            debug("-> Token reset successful. New token: $json->{token}");
+            $self->debug("-> Token reset successful. New token: $json->{token}");
             $active_channels{$channel_id}{session_token} = $json->{token};
             $self->db->set($token_key, $json->{token}); # Update in DB
             return Mojo::Promise->resolve($json->{token});
         }
 
-        debug("-> Failed to reset session token: " . ($json->{response_message} // "Unknown error"));
+        $self->debug("-> Failed to reset session token: " . ($json->{response_message} // "Unknown error"));
 
         return Mojo::Promise->reject("Failed to reset session token.");
     })->catch(sub {
         my $err = shift;
 
-        debug("-> Error during token reset: $err");
+        $self->debug("-> Error during token reset: $err");
 
         return Mojo::Promise->reject("Network error resetting token: $err");
     });
@@ -307,7 +303,7 @@ sub _fetch_categories {
     if (!%categories_cache || (time - $categories_last_fetched) > 3600) {
         my $api_url = 'https://opentdb.com/api_category.php';
 
-        debug("-> Fetching trivia categories from API: $api_url");
+        $self->debug("-> Fetching trivia categories from API: $api_url");
 
         return $self->discord->rest->ua->get_p($api_url)->then(sub {
             my $tx = shift;
@@ -329,19 +325,19 @@ sub _fetch_categories {
 
             $categories_last_fetched = time;
 
-            debug("-> Successfully cached " . scalar(keys %categories_cache) . " categories.");
+            $self->debug("-> Successfully cached " . scalar(keys %categories_cache) . " categories.");
 
             return Mojo::Promise->resolve(1);
         })->catch(sub {
             my $err = shift;
 
-            debug("Error fetching categories: $err");
+            $self->debug("Error fetching categories: $err");
 
             return Mojo::Promise->reject("Error fetching categories: $err");
         });
     }
 
-    debug("-> Using cached trivia categories.");
+    $self->debug("-> Using cached trivia categories.");
 
     return Mojo::Promise->resolve(1);
 }
@@ -354,7 +350,7 @@ sub cmd_trivia {
     my @args = split /\s+/, $args_str;
     my $subcommand = lc(shift @args || 'start');
 
-    debug("Routing subcommand: '$subcommand'");
+    $self->debug("Routing subcommand: '$subcommand'");
 
     if ($subcommand eq 'start') {
         # Parsing for: [difficulty] [win_score] [category...]
@@ -376,7 +372,7 @@ sub cmd_trivia {
     } elsif ($subcommand eq 'top') { $self->show_leaderboard($msg) 
     } elsif ($subcommand eq 'globaltop') { $self->show_global_leaderboard($msg) 
     } elsif ($subcommand =~ /cat(egories)?/) { $self->list_categories($msg) 
-    } elsif ($subcommand eq 'buttons') { debug("Routing to 'show_buttons_menu'"); $self->show_buttons_menu($msg)
+    } elsif ($subcommand eq 'buttons') { $self->debug("Routing to 'show_buttons_menu'"); $self->show_buttons_menu($msg)
     } else { $self->discord->send_message($msg->{'channel_id'}, $self->usage) }
 }
 
@@ -402,7 +398,7 @@ sub start_game {
 
     # Handle explicit '!trivia start' command when a game is already active
     if ($is_initial_start_command && exists $data->{active_game}{$channel_id}) {
-        debug("-> User tried to start new game, but one is already in progress for channel $channel_id.");
+        $self->debug("-> User tried to start new game, but one is already in progress for channel $channel_id.");
         delete $active_channels{$channel_id}{is_fetching}; # Clear flag as we're not fetching
         return $self->discord->send_message($channel_id, "A trivia game is already in progress in this channel! Use `!trivia stop` to end it.");
     }
@@ -428,7 +424,7 @@ sub start_game {
         # Handle category selection (both text and button-selected)
         if (defined $game_state->{category_id}) { # Use ID if available (from buttons)
             $api_url .= "&category=$game_state->{category_id}";
-            debug("-> Using category ID: $game_state->{category_id} (from buttons)");
+            $self->debug("-> Using category ID: $game_state->{category_id} (from buttons)");
         } elsif (defined $game_state->{category_name} && $game_state->{category_name} ne '') {
             my $user_input = lc $game_state->{category_name};
             my @matches;
@@ -445,7 +441,7 @@ sub start_game {
                 $api_url .= "&category=$found_cat->{id}";
                 $game_state->{category_id} = $found_cat->{id}; # Store ID for next rounds
                 $game_state->{category_name} = $found_cat->{original_name};
-                debug("-> Using category: $game_state->{category_name} (ID: $game_state->{category_id})");
+                $self->debug("-> Using category: $game_state->{category_name} (ID: $game_state->{category_id})");
             } elsif (@matches > 1) {
                 my $err_msg = "Your category choice '`$game_state->{category_name}`' was ambiguous. Did you mean one of these?\n- " . join("\n- ", map { $_->{original_name} } @matches);
                 $self->discord->send_message($channel_id, $err_msg);
@@ -462,18 +458,18 @@ sub start_game {
         $data->{active_game}{$channel_id} = $game_state;
 
         if ($is_initial_start_command) {
-            debug("-> Resetting scores for new game session.");
+            $self->debug("-> Resetting scores for new game session.");
             $data->{scores}{$channel_id} = {}; # Scope scores to the channel
             $self->db->set('trivia', $data);
             $self->discord->send_message($channel_id, "Starting a new trivia game! First to **$game_state->{win_score}** points wins. Good luck!");
         } else {
-            debug("-> Continuing existing game session for channel $channel_id.");
+            $self->debug("-> Continuing existing game session for channel $channel_id.");
         }
 
         $self->db->set('trivia', $data); # Save updated game state
 
         $self->discord->send_message($channel_id, "Fetching a new trivia question...");
-        debug("-> Calling trivia API: $api_url");
+        $self->debug("-> Calling trivia API: $api_url");
         return $self->discord->rest->ua->get_p($api_url);
 
     })->then(sub {
@@ -484,7 +480,7 @@ sub start_game {
         return unless exists $data->{active_game}{$channel_id}; # Re-check if game is still active
 
         unless ($tx->res->is_success) {
-            debug("-> API call failed: " . $tx->res->message);
+            $self->debug("-> API call failed: " . $tx->res->message);
             return $self->discord->send_message($channel_id, "Sorry, API call failed: " . $tx->res->message);
         }
         my $api_data = $tx->res->json;
@@ -492,18 +488,35 @@ sub start_game {
         # Error handling for API response codes
         if ($api_data->{response_code} != 0) {
             my $error_message = "Sorry, I couldn't get a valid trivia question. ";
-            if ($api_data->{response_code} == 1) { $error_message .= "There are no questions for your selected criteria." }
-            elsif ($api_data->{response_code} == 2) { $error_message .= "The query was invalid (this is a bug!)." }
-            elsif ($api_data->{response_code} == 3 || $api_data->{response_code} == 4) {
-                $error_message .= "The session token is invalid or exhausted. Trying to get a new one for the next question...";
-                # Attempt to refresh token; no need to block the current flow
-                $self->_reset_session_token($channel_id, $active_channels{$channel_id}{session_token} || '')->catch(sub{ debug("Failed to refresh token: $_[0]") });
+            if ($api_data->{response_code} == 1) { 
+                $error_message .= "There are no questions for your selected criteria." 
             }
+            elsif ($api_data->{response_code} == 2) { 
+                $error_message .= "The query was invalid (this is a bug!)." 
+            }
+            elsif ($api_data->{response_code} == 3 || $api_data->{response_code} == 4) {
+                # This is the new logic
+                my $token_key = "trivia_token_$channel_id";
+                $self->db->del($token_key);
+                delete $active_channels{$channel_id}{session_token};
+                $self->debug("-> Invalid/Exhausted token detected. Deleted token for channel $channel_id.");
+                
+                # Inform the user and automatically retry the original request after a short delay.
+                $self->discord->send_message($channel_id, "The trivia session token was invalid. Fetching a new one and retrying...");
+                
+                # Re-call start_game to try again with a fresh token.
+                # This creates a non-blocking retry loop.
+                Mojo::IOLoop->timer(1 => sub { $self->start_game($msg, $opts) });
+                
+                # Important: Return here to prevent further execution in the current failed promise chain.
+                return; 
+            }
+            # For codes 1 & 2, just send the message and stop.
             return $self->discord->send_message($channel_id, $error_message);
         }
 
         unless (ref $api_data->{results} eq 'ARRAY' && @{$api_data->{results}}) {
-             debug("-> API response was valid but contained no questions.");
+             $self->debug("-> API response was valid but contained no questions.");
              return $self->discord->send_message($channel_id, "Sorry, I received an empty response for a trivia question. Please try again later.");
         }
 
@@ -531,7 +544,7 @@ sub start_game {
         $self->discord->send_message($channel_id, $payload, sub {
             my $sent_msg = shift;
             unless (ref $sent_msg eq 'HASH' && $sent_msg->{id}) {
-                debug("-> Failed to send question message: " . Dumper($sent_msg));
+                $self->debug("-> Failed to send question message: " . Dumper($sent_msg));
                 return;
             }
             my $game_data = $self->get_trivia_data();
@@ -564,7 +577,7 @@ sub start_game {
                                 category_name => $current_game->{category_name},
                             });
                         } else {
-                            debug("Game stopped before timer triggered next question for channel $channel_id.");
+                            $self->debug("Game stopped before timer triggered next question for channel $channel_id.");
                         }
                     });
                 }
@@ -573,7 +586,7 @@ sub start_game {
         });
     })->catch(sub {
         my $err = shift;
-        debug("-> Error during start_game promise chain: $err");
+        $self->debug("-> Error during start_game promise chain: $err");
         delete $active_channels{$channel_id}{is_fetching};
     });
 }
@@ -592,13 +605,13 @@ sub handle_answer {
 
     # Prevent user from answering the same question twice.
     if ($active_channels{$channel_id}{answered_users}{$user->{id}}) {
-        debug("-> User $user->{id} already answered this question. Ignoring.");
+        $self->debug("-> User $user->{id} already answered this question. Ignoring.");
         return;
     }
     $active_channels{$channel_id}{answered_users}{$user->{id}} = 1;
 
     if ($game->{answered}) {
-        debug("-> Question was already answered correctly. Ignoring subsequent answers.");
+        $self->debug("-> Question was already answered correctly. Ignoring subsequent answers.");
         return;
     }
 
@@ -661,7 +674,7 @@ sub _process_correct_answer {
                         category_name => $game->{category_name},
                     });
                 } else {
-                    debug("Game stopped before next question could start for channel $channel_id.");
+                    $self->debug("Game stopped before next question could start for channel $channel_id.");
                 }
             });
         });
@@ -690,7 +703,7 @@ sub _process_incorrect_answer {
 sub stop_game {
     my ($self, $msg) = @_;
     my $channel_id = $msg->{'channel_id'};
-    debug("Attempting to stop game in channel $channel_id.");
+    $self->debug("Attempting to stop game in channel $channel_id.");
     my $data = $self->get_trivia_data();
 
     # Clean up all in-memory state for the channel
@@ -723,7 +736,7 @@ sub _disable_buttons {
 
     return unless ($channel_id && $message_id);
 
-    debug("-> Disabling buttons on message ID $message_id.");
+    $self->debug("-> Disabling buttons on message ID $message_id.");
 
     $self->discord->get_message($channel_id, $message_id, sub {
         my $original_msg = shift;
@@ -816,7 +829,7 @@ sub list_categories {
 sub show_buttons_menu {
     my ($self, $msg) = @_;
     my $channel_id = $msg->{'channel_id'};
-    debug("show_buttons_menu: Displaying trivia options menu in channel $channel_id.");
+    $self->debug("show_buttons_menu: Displaying trivia options menu in channel $channel_id.");
 
     # Initialize pending options for this channel
     $active_channels{$channel_id}{pending_options} = {
@@ -861,14 +874,14 @@ sub show_buttons_menu {
     $self->discord->send_message($channel_id, $initial_payload, sub {
         my $sent_msg = shift;
         if (ref $sent_msg eq 'HASH' && $sent_msg->{id}) {
-            debug("Initial buttons message sent with ID: " . $sent_msg->{id});
+            $self->debug("Initial buttons message sent with ID: " . $sent_msg->{id});
             # Store the message ID so _update_buttons_menu knows which message to edit
             $active_channels{$channel_id}{buttons_message_id} = $sent_msg->{id};
             # Immediately update the message to reflect initial (default) selections, if any.
             # This will also ensure the content message displays correctly from the start.
             $self->_update_buttons_menu($channel_id, $sent_msg->{id});
         } else {
-            debug("Failed to send initial buttons message: " . Dumper($sent_msg));
+            $self->debug("Failed to send initial buttons message: " . Dumper($sent_msg));
             $self->discord->send_message($channel_id, "Error: Could not display trivia setup menu.");
             $self->bot->react_error($channel_id, $msg->{'id'});
         }
@@ -880,7 +893,7 @@ sub show_buttons_menu {
 
 sub _update_buttons_menu {
     my ($self, $channel_id, $message_id) = @_;
-    debug("Updating buttons menu for message $message_id in channel $channel_id.");
+    $self->debug("Updating buttons menu for message $message_id in channel $channel_id.");
 
     my $current_options = $active_channels{$channel_id}{pending_options} || {};
 
@@ -929,7 +942,7 @@ sub _update_buttons_menu {
 
 sub show_category_selection {
     my ($self, $channel_id, $message_id) = @_;
-    debug("show_category_selection: Displaying category selection menu for message $message_id in channel $channel_id.");
+    $self->debug("show_category_selection: Displaying category selection menu for message $message_id in channel $channel_id.");
 
     # Ensure categories are fetched before trying to display them
     $self->_fetch_categories()->then(sub {
@@ -960,7 +973,7 @@ sub show_category_selection {
 
     })->catch(sub {
         my $err = shift;
-        debug("Error fetching categories for selection menu: $err");
+        $self->debug("Error fetching categories for selection menu: $err");
         $self->discord->send_message($channel_id, "Sorry, I couldn't load categories: $err");
         # Re-enable the main trivia setup buttons if an error occurs here
         $self->_update_buttons_menu($channel_id, $message_id);
@@ -970,11 +983,11 @@ sub show_category_selection {
 # Helper to send a specific page of categories using a select menu
 sub _send_category_page {
     my ($self, $channel_id, $original_message_id, $page_index) = @_;
-    debug("_send_category_page: Sending page $page_index for channel $channel_id.");
+    $self->debug("_send_category_page: Sending page $page_index for channel $channel_id.");
 
     my $cat_menu_state = $active_channels{$channel_id}{category_menu};
     unless ($cat_menu_state && $cat_menu_state->{categories}) {
-        debug("No category menu state found for channel $channel_id.");
+        $self->debug("No category menu state found for channel $channel_id.");
         return;
     }
 

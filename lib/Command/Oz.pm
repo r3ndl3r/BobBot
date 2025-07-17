@@ -4,13 +4,13 @@ use utf8;
 
 use Moo;
 use strictures 2;
+use namespace::clean;
+
 use XML::Simple;
 use LWP::UserAgent;
 use HTML::TreeBuilder;
 use HTML::FormatText;
 use Mojo::Date;
-
-use namespace::clean;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_oz);
@@ -19,7 +19,7 @@ has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has db                  => ( is => 'ro', required => 1 );
-has name                => ( is => 'ro', default => 'oz' );
+has name                => ( is => 'ro', default => 'Oz' );
 has access              => ( is => 'ro', default => 1 );
 has timer_seconds       => ( is => 'ro', default => 600 );
 has description         => ( is => 'ro', default => 'OzBargains keyword alert system.' );
@@ -63,18 +63,15 @@ has timer_sub => ( is => 'ro', default => sub
 );
 
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[OZ DEBUG] $msg" if $debug }
-
 # Helper function to add or delete keywords
 sub matchKeyword {
     my ($self, $mode, $keyword, $discord, $channel, $msg) = @_;
-    debug("matchKeyword: Mode: '$mode', Keyword: '$keyword' for user " . $msg->{'author'}{'username'});
+    $self->debug("matchKeyword: Mode: '$mode', Keyword: '$keyword' for user " . $msg->{'author'}{'username'});
 
     # Ensure the 'oz' storage key exists, initialize if not.
     unless ($self->db->get('oz')) {
         $self->db->set('oz', {});
-        debug("matchKeyword: Initialized 'oz' storage key.");
+        $self->debug("matchKeyword: Initialized 'oz' storage key.");
     }
 
     my %oz = %{ $self->db->get('oz') }; # Retrieve current keywords
@@ -84,7 +81,7 @@ sub matchKeyword {
         if (exists $oz{lc $keyword}) {
             $discord->send_message($channel, "OZ: That keyword already exists: '**$keyword**'.");
             $self->bot->react_error($channel, $msg->{'id'});
-            debug("matchKeyword: Add failed, keyword '$keyword' already exists.");
+            $self->debug("matchKeyword: Add failed, keyword '$keyword' already exists.");
             return;
         }
 
@@ -93,7 +90,7 @@ sub matchKeyword {
         $self->db->set('oz', \%oz);
         $discord->send_message($channel, "OZ: Added new keyword: '**$keyword**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
-        debug("matchKeyword: Successfully added keyword '$keyword'.");
+        $self->debug("matchKeyword: Successfully added keyword '$keyword'.");
         return;
     }
 
@@ -102,7 +99,7 @@ sub matchKeyword {
         unless (exists $oz{lc $keyword}) {
             $discord->send_message($channel, "OZ: That keyword doesn't exist: '**$keyword**'.");
             $self->bot->react_error($channel, $msg->{'id'});
-            debug("matchKeyword: Delete failed, keyword '$keyword' does not exist.");
+            $self->debug("matchKeyword: Delete failed, keyword '$keyword' does not exist.");
             return;
         }
 
@@ -111,10 +108,10 @@ sub matchKeyword {
         $self->db->set('oz', \%oz);
         $discord->send_message($channel, "OZ: Deleted keyword: '**$keyword**'.");
         $self->bot->react_robot($channel, $msg->{'id'});
-        debug("matchKeyword: Successfully deleted keyword '$keyword'.");
+        $self->debug("matchKeyword: Successfully deleted keyword '$keyword'.");
         return;
     }
-    debug("matchKeyword: Invalid mode received: '$mode'.");
+    $self->debug("matchKeyword: Invalid mode received: '$mode'.");
 }
 
 
@@ -129,7 +126,7 @@ sub cmd_oz {
     # Remove the command trigger from the arguments.
     $args =~ s/$pattern//i;
     $args = lc $args; # Convert args to lowercase for consistent subcommand parsing.
-    debug("cmd_oz: Received command with args: '$args' from user " . $msg->{author}{username});
+    $self->debug("cmd_oz: Received command with args: '$args' from user " . $msg->{author}{username});
 
     my %oz = %{ $self->db->get('oz') || {} }; # Get current keywords (empty hash if none)
 
@@ -138,20 +135,20 @@ sub cmd_oz {
         my ($mode, $keyword) = (lc $1, $2);
         # Remove trailing/leading spaces from keyword if present
         $keyword =~ s/^\s+|\s+$//g;
-        debug("cmd_oz: Identified keyword management command: mode '$mode', keyword '$keyword'.");
+        $self->debug("cmd_oz: Identified keyword management command: mode '$mode', keyword '$keyword'.");
         $self->matchKeyword($mode, $keyword, $discord, $channel, $msg);
         return; # Exit after handling subcommand
     }
 
     # Handle list subcommand
     if ($args eq 'list') {
-        debug("cmd_oz: Identified 'list' subcommand.");
+        $self->debug("cmd_oz: Identified 'list' subcommand.");
         if (scalar keys %oz) {
             $discord->send_message($channel, "OZ: Matching keywords - " . join ', ', map { "[ **$_** ]" } sort keys %oz );
-            debug("cmd_oz: Sent list of " . (scalar keys %oz) . " keywords.");
+            $self->debug("cmd_oz: Sent list of " . (scalar keys %oz) . " keywords.");
         } else {
             $discord->send_message($channel, "OZ: No keywords currently set. Use `!oz add <keyword>` to add some.");
-            debug("cmd_oz: No keywords to list.");
+            $self->debug("cmd_oz: No keywords to list.");
         }
         $self->bot->react_robot($channel, $msg_id);
         return;
@@ -159,7 +156,7 @@ sub cmd_oz {
 
     # Handle update subcommand
     if ($args eq 'update') {
-        debug("cmd_oz: Identified 'update' subcommand. Triggering manual check.");
+        $self->debug("cmd_oz: Identified 'update' subcommand. Triggering manual check.");
         $discord->send_message($channel, "OZ: Manually checking for new deals...");
         $self->check_ozbargains($msg); # Pass $msg so we can react to it after check
         return;
@@ -167,7 +164,7 @@ sub cmd_oz {
 
     # Handle help subcommand
     if ($args eq 'help') {
-        debug("cmd_oz: Identified 'help' subcommand. Displaying usage.");
+        $self->debug("cmd_oz: Identified 'help' subcommand. Displaying usage.");
         $discord->send_message($channel, $self->usage);
         $self->bot->react_robot($channel, $msg_id);
         return;
@@ -175,7 +172,7 @@ sub cmd_oz {
 
     # If no specific subcommand was matched, assume it's a general trigger (e.g., just "!oz")
     # and trigger a check, informing the user about valid commands.
-    debug("cmd_oz: No specific subcommand matched. Displaying usage and checking for new deals.");
+    $self->debug("cmd_oz: No specific subcommand matched. Displaying usage and checking for new deals.");
     $discord->send_message($channel, "OZ: Unknown command. " . $self->usage);
     $self->bot->react_error($channel, $msg_id);
     # Even if unknown command, proceed to check for deals if no manual command was passed.
@@ -186,7 +183,7 @@ sub cmd_oz {
 # called by the timer or the 'update' command.
 sub check_ozbargains {
     my ($self, $msg) = @_; # $msg will be defined if called manually by user.
-    debug("check_ozbargains: Starting check for new OzBargains deals.");
+    $self->debug("check_ozbargains: Starting check for new OzBargains deals.");
 
     my $discord = $self->discord;
     my $config  = $self->{'bot'}{'config'}{'oz'};
@@ -194,7 +191,7 @@ sub check_ozbargains {
     my %oz_keywords  = %{ $self->db->get('oz') || {} }; # Keywords for alerting
 
     unless ($config && $config->{'url'} && $config->{'channel'}) {
-        debug("check_ozbargains: OzBargains URL or channel not configured in config.ini.");
+        $self->debug("check_ozbargains: OzBargains URL or channel not configured in config.ini.");
         return;
     }
 
@@ -205,7 +202,7 @@ sub check_ozbargains {
     my $res = $ua->get($config->{'url'});
 
     unless ($res->is_success) {
-        debug("check_ozbargains: Failed to fetch OzBargains feed: " . $res->status_line);
+        $self->debug("check_ozbargains: Failed to fetch OzBargains feed: " . $res->status_line);
         if (defined $msg && exists $msg->{'id'}) {
              $discord->send_message($msg->{'channel_id'}, "OZ: Failed to retrieve deals from OzBargains. Please try again later.");
              $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
@@ -218,7 +215,7 @@ sub check_ozbargains {
         $xml = XMLin($res->content, KeepRoot => 1); # KeepRoot helps with single-item feeds
     };
     if ($@ || !defined $xml || !exists $xml->{rss}{channel}{item}) {
-        debug("check_ozbargains: Failed to parse XML or invalid structure: $@");
+        $self->debug("check_ozbargains: Failed to parse XML or invalid structure: $@");
         if (defined $msg && exists $msg->{'id'}) {
              $discord->send_message($msg->{'channel_id'}, "OZ: Failed to parse OzBargains feed data.");
              $self->bot->react_error($msg->{'channel_id'}, $msg->{'id'});
@@ -227,7 +224,7 @@ sub check_ozbargains {
     }
 
     my @items = ref $xml->{rss}{channel}{item} eq 'ARRAY' ? @{$xml->{rss}{channel}{item}} : [$xml->{rss}{channel}{item}];
-    debug("check_ozbargains: Fetched " . scalar(@items) . " items from feed.");
+    $self->debug("check_ozbargains: Fetched " . scalar(@items) . " items from feed.");
 
     my $new_deals_found = 0;
     for my $item (@items) {
@@ -237,12 +234,12 @@ sub check_ozbargains {
         $sth->execute($item->{'link'});
 
         if ($sth->fetchrow_array()) {
-            debug("check_ozbargains: Deal already logged: " . $item->{'link'});
+            $self->debug("check_ozbargains: Deal already logged: " . $item->{'link'});
             next; # Skip already processed deals
         }
 
         $new_deals_found = 1;
-        debug("check_ozbargains: Found new deal: " . $item->{'title'});
+        $self->debug("check_ozbargains: Found new deal: " . $item->{'title'});
 
         my $html = HTML::TreeBuilder->new();
         $html->parse($item->{'description'} // ''); # Handle potentially missing description
@@ -290,7 +287,7 @@ sub check_ozbargains {
         for my $keyword (keys %oz_keywords) {
             if (lc($item->{'title'}) =~ lc($keyword)) { # Case-insensitive match
                 push @alerted_users, $self->{'bot'}{'config'}{'discord'}{'owner_id'}; # Only owner is configured for DM alerts
-                debug("check_ozbargains: Deal title matched keyword '$keyword'. Alerting owner.");
+                $self->debug("check_ozbargains: Deal title matched keyword '$keyword'. Alerting owner.");
                 last; # Alert only once per deal for owner
             }
         }
@@ -305,7 +302,7 @@ sub check_ozbargains {
             # Send DMs to alerted users (currently only bot owner)
             for my $user_id (@alerted_users) {
                 $discord->send_dm($user_id, $embed);
-                debug("check_ozbargains: Sent DM alert for new deal to user ID: $user_id.");
+                $self->debug("check_ozbargains: Sent DM alert for new deal to user ID: $user_id.");
             }
         }
 
@@ -318,9 +315,9 @@ sub check_ozbargains {
                     my $sql_insert = "INSERT INTO oz (link) VALUES(?)"; # Changed table name
                     my $sth_insert = $dbh->prepare($sql_insert);
                     $sth_insert->execute($item->{'link'});
-                    debug("check_ozbargains: Logged deal link: " . $item->{'link'} . " after sending to channel.");
+                    $self->debug("check_ozbargains: Logged deal link: " . $item->{'link'} . " after sending to channel.");
                 } else {
-                    debug("check_ozbargains: Failed to send deal message for '" . $item->{'title'} . "': " . Data::Dumper::Dumper($sent_msg));
+                    $self->debug("check_ozbargains: Failed to send deal message for '" . $item->{'title'} . "': " . Data::Dumper::Dumper($sent_msg));
                 }
             }
         );
@@ -336,7 +333,7 @@ sub check_ozbargains {
             $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
         }
     }
-    debug("check_ozbargains: Finished check for new OzBargains deals.");
+    $self->debug("check_ozbargains: Finished check for new OzBargains deals.");
 }
 
 1;

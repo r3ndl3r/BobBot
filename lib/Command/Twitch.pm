@@ -75,9 +75,7 @@ has timer_sub => ( is => 'ro', default => sub
 );
 
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[TWITCH DEBUG] $msg" if $debug }
-sub BUILD { shift->twitch_loop }
+#sub BUILD { shift->twitch_loop }
 
 
 sub cmd_twitch {
@@ -136,7 +134,7 @@ sub twitch_loop {
     # Get the list of all streamers we are monitoring.
     my @all_monitored_streamers = keys %$twitch;
     return unless @all_monitored_streamers;
-    debug("Starting Twitch loop for: " . join(', ', @all_monitored_streamers));
+    $self->debug("Starting Twitch loop for: " . join(', ', @all_monitored_streamers));
 
     # Fetch the status for all monitored streamers in a single API call.
     $self->get_live_streams(\@all_monitored_streamers, sub {
@@ -177,7 +175,7 @@ sub stream_online {
         # The streamer is already marked as online. Check if game or title has changed.
         if (($twitch->{$streamer}{'topic'} // '') ne $topic || ($twitch->{$streamer}{'game'} // '') ne $game) {
             
-            debug "INFO CHANGED: $streamer - $topic - $game";
+            $self->debug("INFO CHANGED: $streamer - $topic - $game");
 
             $discord->get_message($config->{'channel'}, $msgID, sub {
                 my $msg = shift;
@@ -199,7 +197,7 @@ sub stream_online {
             # If seen offline less than 10 minutes (600 seconds) ago, it's a crash recovery.
             if ((time - $last_offline) < 600) {
                 $is_new_session = 0;
-                debug("Streamer $streamer recovered from a likely crash.");
+                $self->debug("Streamer $streamer recovered from a likely crash.");
             }
         }
 
@@ -210,7 +208,7 @@ sub stream_online {
                 if (my $end_epoch = $twitch->{$streamer}{'last_seen_offline'}) {
                     my $duration_seconds = $end_epoch - $start_epoch;
                     $twitch->{$streamer}{'last_stream_duration'} = $duration_seconds > 0 ? $duration_seconds : 0;
-                    debug("Calculated last stream duration for $streamer: $duration_seconds seconds.");
+                    $self->debug("Calculated last stream duration for $streamer: $duration_seconds seconds.");
                 }
             }
             # Since it's a new session, we must clear the old start time before setting a new one.
@@ -220,7 +218,7 @@ sub stream_online {
         # Set the session start time only if one doesn't already exist.
         # This is key to preserving the original start time across crash recoveries.
         unless (exists $twitch->{$streamer}{'online_at_epoch'}) {
-            debug("Setting new session start time for $streamer.");
+            $self->debug("Setting new session start time for $streamer.");
             $twitch->{$streamer}{'online_at_epoch'} = str2time($stream_info->{started_at});
         }
         
@@ -241,7 +239,7 @@ sub stream_offline {
 
     # Check if we have a message ID, which indicates the bot thought the streamer was online.
     if ($twitch->{$streamer}{'msgID'}) {
-        debug("Streamer $streamer appears to be offline.");
+        $self->debug("Streamer $streamer appears to be offline.");
         
         # Record the exact time the streamer went offline. This will be used
         # to detect crash-restarts and as the end-time for the session duration.
@@ -335,7 +333,7 @@ sub add_streamer {
 
     for my $streamer (@streamers_to_add) {
         # Twitch usernames are 4-25 alphanumeric characters.
-        unless ($streamer =~ /^\w{4,25}$/i) {
+        unless ($streamer =~ /^\w{3,25}$/i) {
             push @invalid, "`$streamer` (invalid format)";
             next;
         }
@@ -557,18 +555,25 @@ sub get_live_streams {
 sub get_or_generate_oauth_token {
     my ($self, $config) = @_;
 
-    my $token = ${ $self->db->get('twitch.oauth') } || undef;
+    # Retrieve the token reference from the database
+    my $token_ref = $self->db->get('twitch.oauth');
+    my $token;
 
-    # If token is invalid (e.g., after a 401 error), we should force a regeneration.
-    # This simple implementation just checks for existence.
+    # Check if the reference is valid before dereferencing
+    if (defined $token_ref && ref $token_ref eq 'SCALAR') {
+        $token = $$token_ref;
+    }
+
+    # Generate new token if missing or empty
     unless ($token) {
-        debug "No valid OAuth token found, generating new one.";
+        $self->("No valid OAuth token found, generating new one.");
         my $new_token = $self->generate_oauth_token($config);
         if ($new_token) {
+            # Store the new token as a scalar reference
             $self->db->set('twitch.oauth', \$new_token);
             $token = $new_token;
         } else {
-            say "[TWITCH FATAL] Failed to generate OAuth token. Module will be non-functional.";
+            say "[DEBUG TWITCH] Failed to generate OAuth token: get_or_generate_oauth_token().";
         }
     }
 
@@ -578,7 +583,7 @@ sub get_or_generate_oauth_token {
 
 sub generate_oauth_token {
     my ($self, $config) = @_;
-    debug "Generating new OAuth token.";
+    $self->("Generating new OAuth token.");
 
     my $ua = LWP::UserAgent->new;
     my $res = $ua->post(
@@ -592,7 +597,7 @@ sub generate_oauth_token {
 
     if ($res->is_success) {
         my $content = $res->content;
-        debug "OAuth token generated successfully.";
+        $self->debug("OAuth token generated successfully.");
         return ($content =~ /"access_token":"([^"]+)"/)[0] if $content =~ /"access_token":"([^"]+)"/;
     }
 
@@ -645,7 +650,7 @@ sub getProfile {
 
 sub channel_info {
     my ($self, $discord, $channel, $msg, $streamer_name) = @_;
-    debug("Fetching channel info for '$streamer_name'");
+    $self->debug("Fetching channel info for '$streamer_name'");
 
     my $user_info = $self->get_user_info($streamer_name);
     unless ($user_info) {
@@ -693,7 +698,7 @@ sub top_clips {
         ($period) = $p =~ /--period=(\w+)/;
     }
 
-    debug("Fetching top clips for '$streamer_name' for period '$period'");
+    $self->debug("Fetching top clips for '$streamer_name' for period '$period'");
     
     my $user_info = $self->get_user_info($streamer_name);
     unless ($user_info) {

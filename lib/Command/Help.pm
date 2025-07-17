@@ -12,7 +12,6 @@ our @EXPORT_OK = qw(cmd_help);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-
 has name                => ( is => 'ro', default => 'Help' );
 has access              => ( is => 'ro', default => 0 ); # 0 = Public, 1 = Bot-Owner Only, 2 = Server-Owner Only
 has description         => ( is => 'ro', default => 'List all commands currently available to the bot, or detailed information about a specific command' );
@@ -26,9 +25,6 @@ Eg: `!help uptime`
 EOF
 );
 
-# Set to 1 for verbose output, 0 to disable.
-my $debug = 1;
-sub debug { my $msg = shift; say "[Help DEBUG] $msg" if $debug }
 
 sub cmd_help {
     my ($self, $msg) = @_;
@@ -50,7 +46,7 @@ sub cmd_help {
     # Check if a specific command was requested (i.e., $args is not empty)
     if ( defined $args and length $args > 0 )
     {
-        debug("User requested help for a specific command: '$args'");
+        $self->debug("User requested help for a specific command: '$args'");
         my $command = undef;
         # Iterate through all registered command patterns to find a match
         foreach my $cmd_pattern (keys %{$bot->patterns})
@@ -66,7 +62,7 @@ sub cmd_help {
         # If a command was found, send its detailed help to the channel as an embed
         if ( defined $command )
         {
-            debug("Found command: " . $command->{'name'});
+            $self->debug("Found command: " . $command->{'name'});
             my $embed = {
                 embeds => [{
                     title       => "__**" . $command->{'name'} . "**__",
@@ -85,18 +81,18 @@ sub cmd_help {
             $discord->send_message($channel, $embed);
             # React to the original message to acknowledge it
             $self->bot->react_robot($channel, $msg->{'id'});
-            debug("Sent detailed help for '" . $command->{'name'} . "' to channel: $channel.");
+            $self->debug("Sent detailed help for '" . $command->{'name'} . "' to channel: $channel.");
         }
         else
         {
             # Command not found, send an error message to the channel
-            debug("Command '$args' not found.");
+            $self->debug("Command '$args' not found.");
             $discord->send_message($channel, "Sorry, no command exists by that name. Use `!help` to list all available commands.");
         }
     }
     else # No arguments provided, display a list of all commands using an embed
     {
-        debug("User requested a list of all commands.");
+        $self->debug("User requested a list of all commands.");
         my @public;
         my @botowner;
         my @serverowner;
@@ -133,7 +129,7 @@ sub cmd_help {
         # If no commands are available at all, update the description
         unless (@fields) {
             $embed_description = "There are no commands available at this time.";
-            debug("No commands found to list.");
+            $self->debug("No commands found to list.");
         }
 
         my $embed = {
@@ -149,7 +145,7 @@ sub cmd_help {
         $discord->send_message($channel, $embed);
         # React to the original message to acknowledge it
         $self->bot->react_robot($channel, $msg->{'id'});
-        debug("Sent overall help list to channel: $channel.");
+        $self->debug("Sent overall help list to channel: $channel.");
     }
 }
 

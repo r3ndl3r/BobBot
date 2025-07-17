@@ -61,7 +61,7 @@ has on_message => ( is => 'ro', default => sub {
             return unless (ref $msg->{data} eq 'HASH' && $msg->{data}{custom_id});
 
             if ($msg->{data}{custom_id} eq 'update.weather') {
-                debug("'UPDATE NOW' button clicked by user " . $msg->{member}{user}{username});
+                $self->debug("'UPDATE NOW' button clicked by user " . $msg->{member}{user}{username});
                 # Acknowledge the click immediately and then run the update.
                 $self->discord->interaction_response($msg->{id}, $msg->{token}, { type => 6 }, sub {
                     $self->run_all_forecasts();
@@ -72,13 +72,9 @@ has on_message => ( is => 'ro', default => sub {
 );
 
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[WEATHER DEBUG] $msg" if $debug }
-
-
 sub cmd_weather_router {
     my ($self, $msg) = @_;
-    debug("cmd_weather_router triggered by user " . $msg->{author}{username});
+    $self->debug("cmd_weather_router triggered by user " . $msg->{author}{username});
     my $args_str = $msg->{'content'};
     $args_str =~ s/^weather\s*//i;
 
@@ -86,29 +82,29 @@ sub cmd_weather_router {
 
     if ($args_str =~ /^add\s+"([^"]+)"\s+([\d,]+)/i) {
         my @channel_ids = split /,/, $2;
-        debug("Routing to 'add_forecast' with city:'$1' and channels:'@channel_ids'");
+        $self->debug("Routing to 'add_forecast' with city:'$1' and channels:'@channel_ids'");
         $self->add_forecast($msg, $1, \@channel_ids);
         $command_processed = 1;
     } elsif ($args_str =~ /^edit\s+([^\s]+)\s+([\d,]+)/i) {
         my @channel_ids = split /,/, $2;
-        debug("Routing to 'edit_forecast' for city:'$1' with new channels:'@channel_ids'");
+        $self->debug("Routing to 'edit_forecast' for city:'$1' with new channels:'@channel_ids'");
         $self->edit_forecast($msg, $1, \@channel_ids);
         $command_processed = 1;
     } elsif ($args_str =~ /^remove\s+(.+)/i) {
-        debug("Routing to 'remove_forecast' for city:'$1'");
+        $self->debug("Routing to 'remove_forecast' for city:'$1'");
         $self->remove_forecast($msg, $1);
         $command_processed = 1;
     } elsif ($args_str =~ /^list/i) {
-        debug("Routing to 'list_forecasts'");
+        $self->debug("Routing to 'list_forecasts'");
         $self->list_forecasts($msg);
         $command_processed = 1;
     } elsif ($args_str =~ /^update/i) {
-        debug("Routing to 'run_all_forecasts' for manual update.");
+        $self->debug("Routing to 'run_all_forecasts' for manual update.");
         $self->discord->send_message($msg->{channel_id}, "Manually updating all forecasts...");
         $self->run_all_forecasts($msg);
         $command_processed = 1;
     } else {
-        debug("No valid subcommand found. Displaying usage.");
+        $self->debug("No valid subcommand found. Displaying usage.");
         $self->discord->send_message($msg->{channel_id}, $self->usage);
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
     }
@@ -121,9 +117,9 @@ sub cmd_weather_router {
 
 sub run_all_forecasts {
     my ($self, $msg) = @_;
-    debug("run_all_forecasts started.");
+    $self->debug("run_all_forecasts started.");
     my $forecasts = $self->db->get('weather') || {};
-    debug("Found " . scalar(keys %$forecasts) . " cities to update.");
+   $self->debug("Found " . scalar(keys %$forecasts) . " cities to update.");
 
     for my $city (keys %$forecasts) {
         $self->update_city_forecast($city, $forecasts->{$city});
@@ -132,28 +128,28 @@ sub run_all_forecasts {
     if (defined $msg and exists $msg->{'id'}) {
         $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
     }
-    debug("run_all_forecasts finished.");
+    $self->debug("run_all_forecasts finished.");
 }
 
 # Fetches and posts the forecast for a single city.
 sub update_city_forecast {
     my ($self, $city, $city_data) = @_;
-    debug("Updating forecast for '$city'.");
+    $self->debug("Updating forecast for '$city'.");
     my $apikey = $self->bot->config->{openweathermap}{apikey};
 
     unless ($apikey) {
-        debug("API key is not configured in config.ini");
+        $self->debug("API key is not configured in config.ini");
         return;
     }
 
     my $ua = LWP::UserAgent->new;
     my $onecall_url = "https://api.openweathermap.org/data/3.0/onecall?lat=$city_data->{lat}&lon=$city_data->{lon}&exclude=minutely,hourly,alerts&units=metric&appid=$apikey";
-    debug("Fetching URL: $onecall_url");
+    $self->debug("Fetching URL: $onecall_url");
 
     my $res = $ua->get($onecall_url);
 
     unless ($res->is_success) {
-        debug("Failed to fetch weather for $city: " . $res->status_line . ". Response: " . $res->decoded_content);
+        $self->debug("Failed to fetch weather for $city: " . $res->status_line . ". Response: " . $res->decoded_content);
         return;
     }
 
@@ -161,21 +157,21 @@ sub update_city_forecast {
     my $payload = $self->format_weather_embed($city, $weather_data);
 
     my $channels_ref = ref $city_data->{channels} eq 'ARRAY' ? $city_data->{channels} : [];
-    debug("Found " . scalar(@$channels_ref) . " channels for '$city'.");
+    $self->debug("Found " . scalar(@$channels_ref) . " channels for '$city'.");
 
     for my $channel_id (@$channels_ref) {
         my $message_id = $city_data->{message_ids}{$channel_id};
         if ($message_id) {
-            debug("Editing existing message '$message_id' in channel '$channel_id' for '$city'.");
+            $self->debug("Editing existing message '$message_id' in channel '$channel_id' for '$city'.");
             $self->discord->edit_message($channel_id, $message_id, $payload, sub {
                 my $response = shift;
                 if (defined $response->{code} && $response->{code} == 10008) { # Unknown Message
-                    debug("Message '$message_id' not found in channel '$channel_id'. Sending a new one.");
+                    $self->debug("Message '$message_id' not found in channel '$channel_id'. Sending a new one.");
                     $self->send_and_save_forecast($city, $channel_id, $payload);
                 }
             });
         } else {
-            debug("No existing message for '$city' in channel '$channel_id'. Sending a new one.");
+            $self->debug("No existing message for '$city' in channel '$channel_id'. Sending a new one.");
             $self->send_and_save_forecast($city, $channel_id, $payload);
         }
     }
@@ -197,7 +193,7 @@ sub get_weather_emoji {
 # Builds the final Discord embed message from the API data.
 sub format_weather_embed {
     my ($self, $city_name, $data) = @_;
-    debug("Formatting embed for '$city_name'.");
+    $self->debug("Formatting embed for '$city_name'.");
 
     my $current = $data->{current};
     my $current_temp = sprintf "%.1f", $current->{temp};
@@ -271,11 +267,11 @@ sub format_weather_embed {
 
 sub add_forecast {
     my ($self, $msg, $city_query, $channel_ids_ref) = @_;
-    debug("Executing 'add_forecast' for city '$city_query'.");
+    $self->debug("Executing 'add_forecast' for city '$city_query'.");
     my $apikey = $self->bot->config->{openweathermap}{apikey};
 
     unless ($apikey) {
-        debug("API key is missing from config.ini");
+        $self->debug("API key is missing from config.ini");
         $self->discord->send_message($msg->{channel_id}, "Error: OpenWeatherMap API key is not configured.");
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
         return;
@@ -286,7 +282,7 @@ sub add_forecast {
     my $res = $ua->get($geo_url);
 
     unless ($res->is_success) {
-        debug("Geocoding API failed for '$city_query': " . $res->status_line);
+        $self->debug("Geocoding API failed for '$city_query': " . $res->status_line);
         $self->discord->send_message($msg->{channel_id}, "Error: Could not contact the location API.");
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
         return;
@@ -294,7 +290,7 @@ sub add_forecast {
 
     my $locations = eval { decode_json($res->decoded_content) };
     if ($@ || !@$locations) {
-        debug("Geocoding failed for '$city_query': No locations found or bad JSON.");
+        $self->debug("Geocoding failed for '$city_query': No locations found or bad JSON.");
         $self->discord->send_message($msg->{channel_id}, "Location '$city_query' not found.");
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
         return;
@@ -312,7 +308,7 @@ sub add_forecast {
     };
     
     $self->db->set('weather', $forecasts);
-    debug("Saved new forecast for '$city_name' to DB.");
+    $self->debug("Saved new forecast for '$city_name' to DB.");
     $self->discord->send_message($msg->{channel_id}, "Added forecast for **$city_name** to " . scalar(@$channel_ids_ref) . " channel(s).");
     $self->update_city_forecast($city_name, $forecasts->{$city_name});
 }
@@ -320,14 +316,14 @@ sub add_forecast {
 
 sub edit_forecast {
     my ($self, $msg, $name, $channel_ids_ref) = @_;
-    debug("Executing 'edit_forecast' for city '$name'.");
+    $self->debug("Executing 'edit_forecast' for city '$name'.");
     my $forecasts = $self->db->get('weather') || {};
 
     if (my $city_data = $forecasts->{$name}) {
         my $old_channels_ref = ref $city_data->{channels} eq 'ARRAY' ? $city_data->{channels} : [];
         my $old_message_ids_ref = ref $city_data->{message_ids} eq 'HASH' ? $city_data->{message_ids} : {};
 
-        debug("Deleting old messages for '$name'.");
+        $self->debug("Deleting old messages for '$name'.");
         for my $channel_id (@$old_channels_ref) {
             if (my $message_id = $old_message_ids_ref->{$channel_id}) {
                 $self->discord->delete_message($channel_id, $message_id);
@@ -338,11 +334,11 @@ sub edit_forecast {
         $city_data->{message_ids} = {};
         
         $self->db->set('weather', $forecasts);
-        debug("Updated channels for '$name' in DB.");
+        $self->debug("Updated channels for '$name' in DB.");
         $self->discord->send_message($msg->{channel_id}, "Updated channels for **$name**. Triggering new forecast...");
         $self->update_city_forecast($name, $city_data);
     } else {
-        debug("City '$name' not found for editing.");
+        $self->debug("City '$name' not found for editing.");
         $self->discord->send_message($msg->{channel_id}, "Forecast for **$name** not found.");
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
     }
@@ -351,14 +347,14 @@ sub edit_forecast {
 
 sub remove_forecast {
     my ($self, $msg, $name) = @_;
-    debug("Executing 'remove_forecast' for city '$name'.");
+    $self->debug("Executing 'remove_forecast' for city '$name'.");
     my $forecasts = $self->db->get('weather') || {};
 
     if (my $city_data = $forecasts->{$name}) {
         my $channels_ref = ref $city_data->{channels} eq 'ARRAY' ? $city_data->{channels} : [];
         my $message_ids_ref = ref $city_data->{message_ids} eq 'HASH' ? $city_data->{message_ids} : {};
 
-        debug("Deleting messages for '$name' before removal.");
+        $self->debug("Deleting messages for '$name' before removal.");
         for my $channel_id (@$channels_ref) {
             if (my $message_id = $message_ids_ref->{$channel_id}) {
                 $self->discord->delete_message($channel_id, $message_id);
@@ -366,10 +362,10 @@ sub remove_forecast {
         }
         delete $forecasts->{$name};
         $self->db->set('weather', $forecasts);
-        debug("Removed '$name' from DB.");
+        $self->debug("Removed '$name' from DB.");
         $self->discord->send_message($msg->{channel_id}, "Removed forecast for **$name**.");
     } else {
-        debug("City '$name' not found for removal.");
+        $self->debug("City '$name' not found for removal.");
         $self->discord->send_message($msg->{channel_id}, "Forecast for **$name** not found.");
         $self->bot->react_error($msg->{channel_id}, $msg->{id});
     }
@@ -378,7 +374,7 @@ sub remove_forecast {
 
 sub list_forecasts {
     my ($self, $msg) = @_;
-    debug("Executing 'list_forecasts'.");
+    $self->debug("Executing 'list_forecasts'.");
     my $forecasts = $self->db->get('weather') || {};
 
     if (keys %$forecasts) {
@@ -399,7 +395,7 @@ sub list_forecasts {
 
 sub send_and_save_forecast {
     my ($self, $city, $channel_id, $payload) = @_;
-    debug("Sending new forecast message for '$city' to channel '$channel_id'.");
+    $self->debug("Sending new forecast message for '$city' to channel '$channel_id'.");
     $self->discord->send_message($channel_id, $payload, sub {
         my $sent_msg = shift;
         if (ref $sent_msg eq 'HASH' && $sent_msg->{id}) {
@@ -408,7 +404,7 @@ sub send_and_save_forecast {
                 $forecasts->{$city}{message_ids} //= {};
                 $forecasts->{$city}{message_ids}{$channel_id} = $sent_msg->{id};
                 $self->db->set('weather', $forecasts);
-                debug("Saved new message ID '" . $sent_msg->{id} . "' for '$city' in channel '$channel_id'.");
+                $self->debug("Saved new message ID '" . $sent_msg->{id} . "' for '$city' in channel '$channel_id'.");
             }
         }
     });

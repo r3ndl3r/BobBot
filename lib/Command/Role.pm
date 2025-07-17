@@ -1,9 +1,9 @@
 package Command::Role;
 use feature 'say';
+use utf8;
 
 use Moo;
 use strictures 2;
-
 use namespace::clean;
 
 use Exporter qw(import);
@@ -12,7 +12,6 @@ our @EXPORT_OK = qw(cmd_role);
 has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
-
 has name                => ( is => 'ro', default => 'Role' );
 has access              => ( is => 'ro', default => 1 );
 has description         => ( is => 'ro', default => 'Role' );

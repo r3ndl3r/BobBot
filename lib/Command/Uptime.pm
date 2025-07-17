@@ -4,8 +4,9 @@ use utf8;
 
 use Moo;
 use strictures 2;
-use Time::Duration;
 use namespace::clean;
+
+use Time::Duration;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_template);

@@ -7,8 +7,7 @@ use strictures 2;
 use namespace::clean;
 
 use JSON;
-use Data::Dumper; # For detailed error logging
-use Mojo::IOLoop; # For timer in retry logic
+use Mojo::IOLoop;
 
 use Exporter qw(import);
 our @EXPORT_OK = qw(cmd_gemini);
@@ -57,9 +56,6 @@ has on_message => ( is => 'ro', default =>
 );
 
 
-my $debug = 0;
-sub debug { my $msg = shift; say "[GEMINI DEBUG] $msg" if $debug }
-
 # Helper function to make the API call with retry logic
 sub _make_gemini_api_call {
     my ($self, $msg, $history, $retries) = @_;
@@ -71,14 +67,14 @@ sub _make_gemini_api_call {
     my $url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$api_key";
     my $payload = { contents => $history };
 
-    debug("Attempting API POST request to $url (Retry: $retries) with payload: " . (ref $payload ? JSON->new->encode($payload) : $payload));
+    $self->debug("Attempting API POST request to $url (Retry: $retries) with payload: " . (ref $payload ? JSON->new->encode($payload) : $payload));
 
     # Return the promise chain from this function
     return $self->discord->rest->ua->post_p($url => json => $payload)->then(sub {
         my $tx = shift;
 
-        debug("API POST request returned. Status: " . $tx->res->code . " " . $tx->res->message);
-        debug("Response Body: " . ($tx->res->body // '[No Body]'));
+        $self->debug("API POST request returned. Status: " . $tx->res->code . " " . $tx->res->message);
+        $self->debug("Response Body: " . ($tx->res->body // '[No Body]'));
 
         # Handle 'Too Many Requests' specifically
         if ($tx->res->code == 429) {
@@ -86,7 +82,7 @@ sub _make_gemini_api_call {
             $retry_after = $retry_after * (2 ** $retries); # Exponential backoff
             $retry_after = 60 if $retry_after > 60; # Cap max retry delay
 
-            debug("Received 429 Too Many Requests. Retrying in $retry_after seconds (Attempt: " . ($retries + 1) . ")");
+            $self->debug("Received 429 Too Many Requests. Retrying in $retry_after seconds (Attempt: " . ($retries + 1) . ")");
             if ($retries < 3) { # Limit retries to prevent infinite loops
                 # Schedule retry and return a new promise that resolves when the retry completes
                 return Mojo::Promise->new->then(sub {
@@ -141,7 +137,7 @@ sub _make_gemini_api_call {
             # If message sent successfully, save history and resolve the main promise
             my $history_key = "gemini_conversation"; # Non-channel-specific key
             $self->db->set($history_key, $history);
-            debug("Saved updated history after successful message send.");
+            $self->debug("Saved updated history after successful message send.");
             return 1; # Resolve this step successfully
         });
 
@@ -199,7 +195,7 @@ sub cmd_gemini {
     # Load the conversation history from the database (non-channel-specific)
     my $history_key = "gemini_conversation";
     my $history = $self->db->get($history_key) || [];
-    debug("Loaded " . scalar(@$history) . " parts from history.");
+    $self->debug("Loaded " . scalar(@$history) . " parts from history.");
 
     # Add the user's new prompt to the history
     push @$history, {
@@ -210,11 +206,11 @@ sub cmd_gemini {
     # Call the helper function and handle its promise result
     $self->_make_gemini_api_call($msg, $history)->then(sub {
         # If _make_gemini_api_call resolves, everything went well (API call, message send, history save)
-        debug("Gemini command fully executed successfully.");
+        $self->debug("Gemini command fully executed successfully.");
     })->catch(sub {
         my $err = shift;
         $self->log->error("[Gemini.pm] Final error caught in cmd_gemini: $err");
-        debug("[Gemini.pm] Raw final error object: " . (ref $err ? Data::Dumper->Dumper($err) : $err));
+        $self->debug("[Gemini.pm] Raw final error object: " . (ref $err ? Data::Dumper->Dumper($err) : $err));
         # Send a user-friendly error message, including the specific error from the promise chain if available.
         my $user_error_message = "An unexpected error occurred while contacting the AI.";
         if (ref $err eq '') { # If the error is a simple string (e.g., from custom rejections)
@@ -240,7 +236,7 @@ sub reset_conversation {
     my $history_key = "gemini_conversation"; # Non-channel-specific key
     $self->db->del($history_key);
 
-    debug("Conversation history reset.");
+    $self->debug("Conversation history reset.");
 
     $self->bot->send_long_message($channel_id, "AI conversation history has been reset.")->catch(sub {
         my $err = shift;
