@@ -15,7 +15,7 @@ has bot                 => ( is => 'ro' );
 has discord             => ( is => 'lazy', builder => sub { shift->bot->discord } );
 has log                 => ( is => 'lazy', builder => sub { shift->bot->log } );
 has db                  => ( is => 'ro', required => 1 );
-has name                => ( is => 'ro', default => '' );
+has name                => ( is => 'ro', default => 'Catch' );
 has access              => ( is => 'ro', default => 0 );
 has usage               => ( is => 'ro', default => '' );
 has description         => ( is => 'ro', default => '' );
