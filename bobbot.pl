@@ -25,7 +25,7 @@ say localtime(time) . " Loaded Config: $config_file";
 my $dbh_instance = Component::DBI->new();
 
 # Initialize the bot
-my $bot = Bot::Bobbot->new('config' => $config);
+my $bot = Bot::Bobbot->new('config' => $config, 'db' => $dbh_instance);
 
 find(sub {
     if (-d $_ && $_ eq 'old') {
