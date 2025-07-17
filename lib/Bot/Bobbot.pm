@@ -49,6 +49,7 @@ has permissions => ( is => 'ro', default => sub {
 );
 
 has config              => ( is => 'ro' );
+has db                  => ( is => 'ro' );
 has commands            => ( is => 'rw' );
 has patterns            => ( is => 'rw' );
 has session             => ( is => 'rw', default => sub { {} } );
@@ -320,6 +321,24 @@ sub add_command
 {
     my ($self, $command) = @_;
 
+    unless ($command->can('debug')) {
+        $command->meta->add_method('debug' => sub {
+            # 1. Capture the command object (e.g., Command::Help) that this method was called on.
+            # This object is ALWAYS the first argument passed to a method.
+            my $cmd_self = shift;
+            my $message  = shift;
+
+            # 3. Use the main bot object to get the database handle.
+            my $debug_flags = $self->db->get('debug_flags') || {};
+
+            # 4. Use the command object to get its own name for the check.
+            if ( $debug_flags->{ $cmd_self->name } ) {
+                # 5. Use the bot's logger for consistent output.
+                say sprintf "[DEBUG %s] %s", uc($cmd_self->name), $message;
+            }
+        });
+    }
+
     my $name = $command->name;
     $self->{'commands'}->{$name}{'name'} = ucfirst $name;
     $self->{'commands'}->{$name}{'access'} = $command->access;
@@ -331,7 +350,8 @@ sub add_command
 
     $self->{'patterns'}->{$command->pattern} = $name;
 
-    $self->log->debug('[Bobbot.pm] [add_moo_command] Registered new command: "' . $name . '" identified by "' . $command->pattern . '"');
+    # Use the bot's own logger here for consistency
+    $self->log->debug('[Bobbot.pm] [add_command] Registered new command: "' . $name . '"');
 }
 
 # This sub calls any of the registered commands and passes along the args
