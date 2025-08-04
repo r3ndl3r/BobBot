@@ -16,7 +16,7 @@ has db            => ( is => 'ro', required => 1 );
 has name          => ( is => 'ro', default => 'Tasks' );
 has access        => ( is => 'ro', default => 0 );
 has description   => ( is => 'ro', default => 'A task assignment system.' );
-has pattern       => ( is => 'ro', default => sub { qr/^task(s)?\b/i } );
+has pattern       => ( is => 'ro', default => sub { '^task(s)? ?' } );
 has function      => ( is => 'ro', default => sub { \&cmd_tasks } );
 has usage         => ( is => 'ro', default => <<~'EOF'
     **Task Manager Command Help**
@@ -298,8 +298,8 @@ sub task_add {
     $self->debug("-> Success: Assigned task $new_task_id to '$nickname'.");
     
     my $kid_id = $data->{kids}{$nickname};
-    my $dm_content = "Hi! You've been assigned a new task:\n**$new_task_id: $task_desc**\n\n"
-                   . "To complete it, type: `!tasks complete $new_task_id`";
+    my $dm_content = "Hi! You've been assigned a new task:\n🗃️ **$new_task_id: $task_desc**\n\n"
+                   . "To mark as completed, type: `!task complete $new_task_id` or click this button:";
 
     # Modified to include a button component for the initial message
     my $dm_payload = {
@@ -322,7 +322,8 @@ sub task_add {
     $self->discord->send_dm($kid_id, $dm_payload);
     $self->debug("-> Sent DM notification to kid ID '$kid_id'.");
     
-    $self->discord->send_message($msg->{'channel_id'}, "Task **$new_task_id** assigned to **$nickname**.");
+    $self->bot->react_robot($msg->{'channel_id'}, $msg->{'id'});
+    $self->discord->send_message($msg->{'channel_id'}, "🗃️ Task **$new_task_id** assigned to **$nickname**.");
 }
 
 
