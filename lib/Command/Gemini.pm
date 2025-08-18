@@ -154,13 +154,17 @@ sub cmd_gemini {
     my ($self, $msg) = @_;
 
     my $channel_id = $msg->{'channel_id'};
-    my $discord = $self->discord;
-    my $pattern = $self->pattern;
+    my $discord    = $self->discord;
+    my $pattern    = $self->pattern;
+     my $username  = $msg->{'author'}{'username'};
 
     my $prompt = $msg->{'content'};
     # The pattern will only match if the user uses !gemini.
     # For the dedicated channel, this won't match, so the full message is used as the prompt.
     $prompt =~ s/$pattern//i;
+
+    # Prepend the username to the prompt to provide context to the AI.
+    $prompt = "<$username> $prompt";
 
     # --- Subcommand Routing ---
     if (lc($prompt) eq 'reset') {
