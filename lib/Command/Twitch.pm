@@ -566,7 +566,7 @@ sub get_or_generate_oauth_token {
 
     # Generate new token if missing or empty
     unless ($token) {
-        $self->("No valid OAuth token found, generating new one.");
+        $self->debug("No valid OAuth token found, generating new one.");
         my $new_token = $self->generate_oauth_token($config);
         if ($new_token) {
             # Store the new token as a scalar reference
@@ -583,7 +583,7 @@ sub get_or_generate_oauth_token {
 
 sub generate_oauth_token {
     my ($self, $config) = @_;
-    $self->("Generating new OAuth token.");
+    $self->debug("Generating new OAuth token.");
 
     my $ua = LWP::UserAgent->new;
     my $res = $ua->post(
