@@ -97,7 +97,7 @@ sub cmd_storage {
 
     # Subcommand parsing: Split into subcommand and the rest as argument string
     my @parsed_args = split /\s+/, $args, 2;
-    my $subcommand = lc shift @parsed_args;
+    my $subcommand = @parsed_args ? lc shift @parsed_args : '';
     my $argument_str = shift @parsed_args; # This will contain the rest of the arguments for the subcommand
 
     $self->debug("cmd_storage: Parsed subcommand: '$subcommand', argument string: '" . ($argument_str // 'undef') . "'");
