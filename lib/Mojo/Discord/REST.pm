@@ -308,6 +308,49 @@ sub get_channel_messages {
     }
 }
 
+sub get_all_channel_messages {
+    my ($self, $channel, $callback, $before, $accum) = @_;
+
+    my $route = "GET /channels/$channel";
+
+    $accum ||= [];
+
+    if (my $delay = $self->_rate_limited($route)) {
+        $self->log->warn("[REST.pm] [get_all_channel_messages] Rate limited. Trying again in $delay seconds");
+        Mojo::IOLoop->timer($delay => sub {
+            $self->get_all_channel_messages($channel, $callback, $before, $accum);
+        });
+    } else {
+        my $url = $self->base_url . "/channels/$channel/messages?limit=100";
+        $url .= "&before=$before" if $before;
+
+        $self->ua->get($url => sub {
+            my ($ua, $tx) = @_;
+            $self->_set_route_rate_limits($route, $tx->res->headers);
+
+            my $messages = $tx->res->json || [];
+
+            push @$accum, @$messages;
+
+            if (@$messages == 100) {
+                # Get ID of the last message to paginate
+                my $last_id = $messages->[-1]{id};
+                $self->get_all_channel_messages($channel, $callback, $last_id, $accum);
+            } else {
+                # All done
+                $callback->($accum) if defined $callback;
+            }
+        });
+    }
+}
+
+sub get_all_channel_messages_p {
+    my ($self, $channel) = @_;
+    my $promise = Mojo::Promise->new;
+    $self->get_all_channel_messages($channel, sub { $promise->resolve(shift) });
+    return $promise;
+}
+
 sub modify_guild_role {
     my ($self, $guild, $role, $json, $callback) = @_;
     
