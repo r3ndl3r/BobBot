@@ -377,7 +377,6 @@ sub delete_guild_role {
 }
 
 
-# In lib/Mojo/Discord/REST.pm
 sub interaction_response {
     my ($self, $id, $token, $payload, $callback) = @_;
 
