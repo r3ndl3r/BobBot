@@ -393,9 +393,9 @@ sub create_dm
 # Takes a message ID to react to, a user ID to DM, a message to send, and an optional callback sub.
 sub send_ack_dm
 {
-    my ($self, $message_id, $user_id, $message, $callback) = @_;
+    my ($self, $channel_id, $message_id, $user_id, $message, $callback) = @_;
 
-    $self->rest->send_ack_dm($message_id, $user_id, $message, $callback);
+    $self->rest->send_ack_dm($channel_id, $message_id, $user_id, $message, $callback);
 }
 
 # Acknowledge a command by adding a white check mark emoji reaction and nothing else
@@ -440,6 +440,40 @@ sub get_user_p
     return $promise;
 };
 
+# Gets channel information from gateway events that have been stored in memory
+# Synchronous only, as there is no REST lookup here.
+sub get_channel
+{
+    my ($self, $guild_id, $channel_id) = @_;
+
+    # Be smart - Also accept and handle <#channel_id> format.
+    $channel_id =~ s/\<\#(\d+)\>/$1/;
+
+    unless ( $self->_valid_id('get_channel', $guild_id) and $self->_valid_id('get_channel', $channel_id) )
+    {
+        return undef;
+    }
+
+    # Keeping the ternary here in case I want to change the fail behavior...
+    return exists $self->gw->guilds->{$guild_id}->channels->{$channel_id} ?
+        $self->gw->guilds->{$guild_id}->channels->{$channel_id} : undef
+}
+
+# Like get_channel but doesn't return the whole object, just a boolean
+sub channel_exists
+{
+    my ($self, $guild_id, $channel_id) = @_;
+
+    $channel_id =~ s/\<\#(\d+)\>/$1/;
+
+    unless ( $self->_valid_id('get_channel', $guild_id) and $self->_valid_id('get_channel', $channel_id) )
+    {
+        return 0;
+    }
+
+    return exists $self->gw->guilds->{$guild_id}->channels->{$channel_id};
+}
+
 sub get_guilds
 {
     my ($self, $user, $callback) = @_;
@@ -453,6 +487,13 @@ sub get_guild
     defined $guild_id ? return $self->gw->guilds->{$guild_id} : return undef;
 }
 
+sub get_guild_member
+{
+    my ($self, $guild_id, $member_id) = @_;
+
+    defined $guild_id and defined $member_id ? return $self->gw->guilds->{$guild_id}->members->{$member_id} : return undef;
+}
+
 sub leave_guild
 {
     my ($self, $user, $guild, $callback) = @_;
@@ -464,6 +505,31 @@ sub set_topic
 {
     my ($self, $channel, $topic, $callback) = @_;
     $self->rest->set_topic($channel, $topic, $callback);
+}
+
+=head2 get_channel_message()
+    Requires you to pass in the channel id and a message id
+    Retrieves the message and returns it to the callback
+=cut
+sub get_channel_message
+{
+    my ($self, $channel_id, $message_id, $callback) = @_;
+
+    $self->rest->get_channel_message($channel_id, $message_id, $callback);
+}
+
+=head2 get_channel_message_p()
+    Promise version of get_channel_message().
+    It takes a channel ID and a message ID and returns the message object via promise
+=cut
+sub get_channel_message_p
+{
+    my ($self, $channel_id, $message_id) = @_;
+
+    my $promise = Mojo::Promise->new();
+    $self->get_channel_message($channel_id, $message_id, sub{ $promise->resolve(shift) });
+
+    return $promise;
 }
 
 # Supports hashref or string.
@@ -748,6 +814,17 @@ sub get_reactions
     my ($self, $channel, $msgid, $emoji, $callback) = @_;
 
     $self->rest->get_reactions($channel, $msgid, $emoji, $callback);
+}
+
+sub get_reactions_p
+{
+    my ($self, $channel, $msgid, $emoji) = @_;
+
+    my $promise = Mojo::Promise->new;
+
+    $self->get_reactions($channel, $msgid, $emoji, sub { $promise->resolve(shift) });
+
+    return $promise;
 }
 
 sub delete_all_reactions

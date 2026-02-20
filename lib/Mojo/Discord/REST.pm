@@ -169,6 +169,35 @@ sub _valid_id
     return 1;
 }
 
+# get_channel_message will retrieve a message from a channel
+# Requires a channel id and a message id
+# Returns message object to the callback if defined
+sub get_channel_message
+{
+    my ($self, $dest, $message_id, $callback) = @_;
+
+    my $route = "GET /channels/$dest/messages/$message_id";
+    if ( my $delay = $self->_rate_limited($route) )
+    {
+        $self->log->warn('[REST.pm] [get_channel_message] Route is rate limited. Trying again in ' . $delay . ' seconds');
+        Mojo::IOLoop->timer($delay => sub { $self->get_channel_message($dest, $message_id, $callback) });
+    }
+    else
+    {
+        my $get_url = $self->base_url . "/channels/$dest/messages/$message_id";
+
+        $self->ua->get($get_url => {Accept => '*/*'} => sub
+        {
+            my ($ua, $tx) = @_;
+
+            my $headers = $tx->res->headers;
+            $self->_set_route_rate_limits($route, $headers);
+
+            $callback->($tx->res->json) if defined $callback;
+        });
+    }
+}
+
 sub move_channel_category {
     my ($self, $channel, $guild, $callback) = @_;
     
