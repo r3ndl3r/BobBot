@@ -55,6 +55,13 @@ has patterns            => ( is => 'rw' );
 has session             => ( is => 'rw', default => sub { {} } );
 has status_timer        => ( is => 'rw' );
 
+# Lightweight API Server
+has api                 => ( is => 'lazy', builder => sub {
+                            my $self = shift;
+                            require Bot::API;
+                            return Bot::API->new(bot => $self);
+                        });
+
 has user_id             => ( is => 'rwp' );
 has owner_id            => ( is => 'lazy', builder => sub { shift->config->{'discord'}{'owner_id'} } );
 has trigger             => ( is => 'lazy', builder => sub { shift->config->{'discord'}{'trigger'} } );
@@ -114,6 +121,9 @@ sub start
 
     $self->log->info('[Bobbot.pm] [BUILD] New session beginning ' .  localtime(time));
     $self->discord->init();
+    
+    # Initialize and start the HTTP server if enabled
+    $self->api->start();
     
     # Start the IOLoop unless it is already running. 
     Mojo::IOLoop->start unless Mojo::IOLoop->is_running; 
@@ -349,6 +359,12 @@ sub add_command
     $self->{'commands'}->{$name}{'object'} = $command;
 
     $self->{'patterns'}->{$command->pattern} = $name;
+
+    # Register API routes if the command provides them
+    if ($command->can('api_routes')) {
+        $self->log->debug('[Bobbot.pm] [add_command] Registering API routes for: ' . $name);
+        $command->api_routes($self->api->app->routes);
+    }
 
     # Use the bot's own logger here for consistency
     $self->log->debug('[Bobbot.pm] [add_command] Registered new command: "' . $name . '"');
