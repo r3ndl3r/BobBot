@@ -29,6 +29,30 @@ has app    => ( is => 'lazy', builder => sub {
         });
     });
 
+    # Send a Direct Message to a Discord User
+    # Expects JSON: { "text": "message content" } OR { "embed": { ... } }
+    $routes->post('/message/dm/:user_id' => sub {
+        my $c = shift;
+        my $user_id = $c->stash('user_id');
+        my $json = $c->req->json;
+
+        unless ($json && ($json->{text} || $json->{embed})) {
+            return $c->render(json => { error => 'Missing "text" or "embed" field in JSON body' }, status => 400);
+        }
+
+        my $payload = $json->{embed} // $json->{text};
+
+        # Use the bot's discord object to send the DM
+        $c->discord->send_dm($user_id, $payload, sub {
+            my $resp = shift;
+            if ($resp && ref $resp eq 'HASH' && $resp->{id}) {
+                $c->render(json => { success => 1, message_id => $resp->{id} });
+            } else {
+                $c->render(json => { success => 0, error => 'Failed to send DM. Check user ID and bot permissions.' }, status => 500);
+            }
+        });
+    });
+
     return $app;
 });
 

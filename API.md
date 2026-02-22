@@ -43,6 +43,32 @@ Returns basic health and status information about the bot.
     }
     ```
 
+### `POST /message/dm/:user_id`
+Sends a direct message to a Discord user.
+*   **Request Body (JSON):**
+    ```json
+    {
+      "text": "Your reminder is here!"
+    }
+    ```
+    *OR a full Discord embed:*
+    ```json
+    {
+      "embed": {
+        "title": "Reminder",
+        "description": "Don't forget the event!",
+        "color": 3447003
+      }
+    }
+    ```
+*   **Response:**
+    ```json
+    {
+      "success": 1,
+      "message_id": "1391000000000000000"
+    }
+    ```
+
 ---
 
 ## 4. Extending the API (Command Modules)
