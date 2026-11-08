@@ -40,11 +40,12 @@ has app    => ( is => 'lazy', builder => sub {
             return $c->render(json => { error => 'Missing "text" or "embed" field in JSON body' }, status => 400);
         }
 
-        my $payload = $json->{embed} // $json->{text};
+        $c->render_later; my $payload = $json->{embed} // $json->{text};
 
         # Use the bot's discord object to send the DM
         $c->discord->send_dm($user_id, $payload, sub {
             my $resp = shift;
+            return if $c->res->code; # Prevent double render if already timed out or errored
             if ($resp && ref $resp eq 'HASH' && $resp->{id}) {
                 $c->render(json => { success => 1, message_id => $resp->{id} });
             } else {
