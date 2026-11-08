@@ -871,11 +871,13 @@ sub send_dm
         my $json = shift;
         my $dm = $json->{'id'};
 
-        $self->log->debug('[REST.pm] [send_dm] Sending DM to user ID ' . $user . ' in DM ID ' . $dm);
-
         unless ($dm) {
-            print "DEBUG: [REST.pm] [send_dm] Sending DM to ID: $user, message: $message\n";
+            print "[REST.pm] [send_dm] [ERROR] Failed to create or find DM channel for user $user. API Error: " . ($json->{message} // 'Unknown') . "\n";
+            $callback->({ error => 'DM channel creation failed' }) if defined $callback;
+            return;
         };
+
+        print "[REST.pm] [send_dm] Sending DM to user ID $user in DM ID $dm\n";
 
         $self->send_message($dm, $message, $callback);
     });
@@ -1343,11 +1345,12 @@ sub add_guild_member_role
     if ( my $delay = $self->_rate_limited($route))
     {
         $self->log->warn('[REST.pm] [add_guild_member_role] Route is being rate limited. Try again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->add_guild_member_role($guild_id, $user_id, $role_id) });
+        Mojo::IOLoop->timer($delay => sub { $self->add_guild_member_role($guild_id, $user_id, $role_id, $callback) });
     }
     else
     {
-        $self->ua->put($url => {Accept => '*/*'} => json => sub
+        # Discord expects an empty body for this PUT request.
+        $self->ua->put($url => {Accept => '*/*'} => '' => sub
         {
             my ($ua, $tx) = @_;
 
@@ -1368,11 +1371,11 @@ sub remove_guild_member_role
     if ( my $delay = $self->_rate_limited($route))
     {
         $self->log->warn('[REST.pm] [remove_guild_member_role] Route is being rate limited. Try again in ' . $delay . ' seconds');
-        Mojo::IOLoop->timer($delay => sub { $self->add_guild_member_role($guild_id, $user_id, $role_id) });
+        Mojo::IOLoop->timer($delay => sub { $self->remove_guild_member_role($guild_id, $user_id, $role_id, $callback) });
     }
     else
     {
-        $self->ua->delete($url => {Accept => '*/*'} => json => sub
+        $self->ua->delete($url => {Accept => '*/*'} => sub
         {
             my ($ua, $tx) = @_;
 
